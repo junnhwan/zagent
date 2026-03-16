@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.wanjune.zagent.mapper.AiClientAdvisorMapper">
+
+    <resultMap id="BaseResultMap" type="io.wanjune.zagent.model.entity.AiClientAdvisor">
+        <id column="id" property="id"/>
+        <result column="advisor_id" property="advisorId"/>
+        <result column="advisor_name" property="advisorName"/>
+        <result column="advisor_type" property="advisorType"/>
+        <result column="order_num" property="orderNum"/>
+        <result column="ext_param" property="extParam"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="selectByAdvisorId" resultMap="BaseResultMap">
+        SELECT * FROM ai_client_advisor WHERE advisor_id = #{advisorId} AND status = 1
+    </select>
+
+    <select id="selectByAdvisorIds" resultMap="BaseResultMap">
+        SELECT * FROM ai_client_advisor WHERE status = 1 AND advisor_id IN
+        <foreach collection="advisorIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        ORDER BY order_num ASC
+    </select>
+
+</mapper>

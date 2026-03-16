@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.wanjune.zagent.mapper.AiClientToolMcpMapper">
+
+    <resultMap id="BaseResultMap" type="io.wanjune.zagent.model.entity.AiClientToolMcp">
+        <id column="id" property="id"/>
+        <result column="mcp_id" property="mcpId"/>
+        <result column="mcp_name" property="mcpName"/>
+        <result column="transport_type" property="transportType"/>
+        <result column="transport_config" property="transportConfig"/>
+        <result column="request_timeout" property="requestTimeout"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="selectByMcpId" resultMap="BaseResultMap">
+        SELECT * FROM ai_client_tool_mcp WHERE mcp_id = #{mcpId} AND status = 1
+    </select>
+
+    <select id="selectByMcpIds" resultMap="BaseResultMap">
+        SELECT * FROM ai_client_tool_mcp WHERE status = 1 AND mcp_id IN
+        <foreach collection="mcpIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+</mapper>
