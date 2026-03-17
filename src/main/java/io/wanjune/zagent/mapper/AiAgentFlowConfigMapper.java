@@ -17,6 +17,11 @@ public interface AiAgentFlowConfigMapper {
      * @param agentId 智能体ID
      * @return 按sequence升序排列的流程配置列表
      */
-    List<AiAgentFlowConfig> selectByAgentId(@Param("agentId") Long agentId);
+    List<AiAgentFlowConfig> selectByAgentId(@Param("agentId") String agentId);
+
+    /**
+     * 查询所有流程配置（预热用）
+     */
+    List<AiAgentFlowConfig> selectAll();
 
 }

@@ -6,12 +6,17 @@
         <id column="id" property="id"/>
         <result column="agent_id" property="agentId"/>
         <result column="client_id" property="clientId"/>
+        <result column="client_type" property="clientType"/>
         <result column="sequence" property="sequence"/>
         <result column="create_time" property="createTime"/>
     </resultMap>
 
     <select id="selectByAgentId" resultMap="BaseResultMap">
         SELECT * FROM ai_agent_flow_config WHERE agent_id = #{agentId} ORDER BY sequence ASC
+    </select>
+
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT * FROM ai_agent_flow_config
     </select>
 
 </mapper>

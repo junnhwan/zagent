@@ -19,4 +19,7 @@ public class AgentRunRequest {
     /** 对话ID, 用于对话记忆 */
     private String conversationId;
 
+    /** 最大执行轮次(Auto策略用, 默认3) */
+    private int maxStep = 3;
+
 }

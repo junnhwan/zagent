@@ -8,6 +8,7 @@
         <result column="agent_name" property="agentName"/>
         <result column="description" property="description"/>
         <result column="channel" property="channel"/>
+        <result column="strategy" property="strategy"/>
         <result column="status" property="status"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>

@@ -19,6 +19,8 @@ public class AiAgent {
     private String description;
     /** 渠道类型 agent(多步编排)/chat_stream(流式对话) */
     private String channel;
+    /** 执行策略 fixed(顺序执行)/auto(智能编排)/flow(工具编排) */
+    private String strategy;
     /** 状态 0-禁用 1-启用 */
     private Integer status;
     /** 创建时间 */

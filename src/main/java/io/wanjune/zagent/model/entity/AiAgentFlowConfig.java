@@ -13,9 +13,11 @@ public class AiAgentFlowConfig {
     /** 主键ID */
     private Long id;
     /** 智能体ID */
-    private Long agentId;
+    private String agentId;
     /** 客户端ID */
-    private Long clientId;
+    private String clientId;
+    /** 客户端类型（default/task_analyzer/precision_executor/quality_supervisor/response_assistant/tool_mcp/planning/executor） */
+    private String clientType;
     /** 序列号（执行顺序，从小到大） */
     private Integer sequence;
     /** 创建时间 */
