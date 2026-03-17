@@ -10,7 +10,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * @author zagent
  */
 @EnableScheduling
-@SpringBootApplication
+@SpringBootApplication(excludeName = {
+        "org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration"
+})
 public class ZAgentApplication {
 
     /**

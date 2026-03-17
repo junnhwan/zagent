@@ -25,4 +25,10 @@ public interface AiClientAssemblyService {
      */
     void invalidate(String clientId);
 
+    /**
+     * 启动预热: 预构建所有启用状态的Agent关联的ChatClient。
+     * <p>在应用启动后调用, 避免首次请求时的延迟。</p>
+     */
+    void warmUpAll();
+
 }

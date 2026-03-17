@@ -14,6 +14,7 @@ import io.wanjune.zagent.model.entity.*;
 import io.wanjune.zagent.model.enums.AdvisorTypeEnum;
 import io.wanjune.zagent.model.enums.TransportTypeEnum;
 import io.wanjune.zagent.service.AiClientAssemblyService;
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -41,13 +42,16 @@ import java.util.stream.Collectors;
 /**
  * AI客户端动态装配服务实现。
  * <p>核心流程: clientId -> DB查询配置 -> 构建OpenAiApi -> 构建ChatModel -> 装配Advisors/MCP工具 -> 返回ChatClient。
- * 使用 {@link ConcurrentHashMap} 缓存已构建的ChatClient实例, 避免重复构建。</p>
+ * 使用 {@link ConcurrentHashMap} 缓存已构建的ChatClient实例, 避免重复构建。
+ * 实现 DisposableBean 在应用关闭时清理MCP客户端资源。</p>
  */
 @Slf4j
 @Service
-public class AiClientAssemblyServiceImpl implements AiClientAssemblyService {
+public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org.springframework.beans.factory.DisposableBean {
 
     private final ConcurrentHashMap<String, ChatClient> clientCache = new ConcurrentHashMap<>();
+    /** MCP客户端资源池, 用于关闭时清理 */
+    private final List<McpSyncClient> mcpClientPool = Collections.synchronizedList(new ArrayList<>());
 
     @Resource
     private AiClientConfigMapper aiClientConfigMapper;
@@ -62,7 +66,7 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService {
     @Resource
     private AiClientToolMcpMapper aiClientToolMcpMapper;
     @Resource
-    private AiClientMapper aiClientMapper;
+    private AiAgentFlowConfigMapper aiAgentFlowConfigMapper;
     @Resource
     @Qualifier("vectorStore")
     private VectorStore vectorStore;
@@ -80,6 +84,66 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService {
     @Override
     public void invalidate(String clientId) {
         clientCache.remove(clientId);
+        log.info("ChatClient缓存已失效: {}", clientId);
+    }
+
+    /**
+     * 应用关闭时清理所有MCP客户端资源
+     */
+    @Override
+    public void destroy() {
+        log.info("正在关闭{}个MCP客户端...", mcpClientPool.size());
+        for (McpSyncClient client : mcpClientPool) {
+            try {
+                client.close();
+            } catch (Exception e) {
+                log.warn("关闭MCP客户端失败: {}", e.getMessage());
+            }
+        }
+        mcpClientPool.clear();
+        clientCache.clear();
+        log.info("MCP客户端和ChatClient缓存已全部清理");
+    }
+
+    /**
+     * 启动预热: 异步预构建所有FlowConfig中引用的ChatClient
+     */
+    @PostConstruct
+    public void init() {
+        executorService.execute(() -> {
+            try {
+                Thread.sleep(3000); // 等待其他Bean初始化完成
+                warmUpAll();
+            } catch (Exception e) {
+                log.warn("启动预热失败, 将在首次请求时构建: {}", e.getMessage());
+            }
+        });
+    }
+
+    @Override
+    public void warmUpAll() {
+        log.info("开始预热ChatClient...");
+        try {
+            // 获取所有FlowConfig中引用的clientId（去重）
+            List<AiAgentFlowConfig> allFlowConfigs = aiAgentFlowConfigMapper.selectAll();
+            Set<String> clientIds = new LinkedHashSet<>();
+            for (AiAgentFlowConfig config : allFlowConfigs) {
+                clientIds.add(config.getClientId());
+            }
+
+            int success = 0;
+            for (String clientId : clientIds) {
+                try {
+                    getOrBuildChatClient(clientId);
+                    success++;
+                } catch (Exception e) {
+                    log.warn("预热clientId={}失败: {}", clientId, e.getMessage());
+                }
+            }
+            log.info("预热完成: {}/{} 个ChatClient构建成功", success, clientIds.size());
+        } catch (Exception e) {
+            log.warn("预热过程异常: {}", e.getMessage());
+        }
     }
 
     /**
@@ -223,6 +287,7 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService {
             try {
                 McpSyncClient mcpClient = createMcpClient(mcp);
                 mcpClients.add(mcpClient);
+                mcpClientPool.add(mcpClient); // 加入资源池, 关闭时统一清理
                 log.info("MCP client initialized: {} ({})", mcp.getMcpName(), mcp.getTransportType());
             } catch (Exception e) {
                 log.error("Failed to create MCP client: {} - {}", mcp.getMcpName(), e.getMessage());
@@ -233,9 +298,8 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService {
             return Collections.emptyList();
         }
 
-        return Arrays.asList(
-                new SyncMcpToolCallbackProvider(mcpClients.toArray(new McpSyncClient[0])).getToolCallbacks()
-        );
+        ToolCallback[] callbacks = new SyncMcpToolCallbackProvider(mcpClients).getToolCallbacks();
+        return Arrays.asList(callbacks);
     }
 
     /**
