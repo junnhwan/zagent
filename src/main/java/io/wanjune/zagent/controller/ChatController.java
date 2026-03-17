@@ -18,6 +18,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @Slf4j
 @RestController
 @RequestMapping("/api/chat")
+@CrossOrigin(origins = "*", allowedHeaders = "*")
 public class ChatController {
 
     @Resource
@@ -31,13 +32,8 @@ public class ChatController {
      */
     @PostMapping
     public Result<ChatMessageVO> chat(@RequestBody ChatRequest request) {
-        try {
-            ChatMessageVO result = chatService.chat(request);
-            return Result.success(result);
-        } catch (Exception e) {
-            log.error("Chat error", e);
-            return Result.fail(e.getMessage());
-        }
+        ChatMessageVO result = chatService.chat(request);
+        return Result.success(result);
     }
 
     /**
