@@ -11,19 +11,18 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * Spring AI 相关配置, 包含向量存储和文本分割器
+ * Spring AI 相关配置, 包含向量存储和文本分割器。
+ * <p>分块参数支持通过application.yml配置:
+ * <ul>
+ *   <li>zagent.rag.chunk-size: 分块大小（默认800 tokens）</li>
+ *   <li>zagent.rag.chunk-overlap: 分块重叠（默认100 tokens）</li>
+ *   <li>zagent.rag.similarity-threshold: 相似度阈值（默认0.0）</li>
+ *   <li>zagent.rag.top-k: 检索TopK（默认5）</li>
+ * </ul></p>
  */
 @Configuration
 public class AiConfig {
 
-    /**
-     * 创建PgVectorStore Bean, 使用OpenAI Embedding模型, 向量表名: vector_store
-     *
-     * @param baseUrl      OpenAI API基础URL
-     * @param apiKey       OpenAI API密钥
-     * @param jdbcTemplate PgVector专用JdbcTemplate
-     * @return PgVectorStore向量存储实例
-     */
     @Bean("vectorStore")
     public PgVectorStore pgVectorStore(@Value("${spring.ai.openai.base-url}") String baseUrl,
                                         @Value("${spring.ai.openai.api-key}") String apiKey,
@@ -41,13 +40,13 @@ public class AiConfig {
     }
 
     /**
-     * 创建文档文本分割器, 用于RAG文档切分
-     *
-     * @return TokenTextSplitter文本分割器实例
+     * 可配置的文本分割器, 支持自定义分块大小和重叠
      */
     @Bean
-    public TokenTextSplitter tokenTextSplitter() {
-        return new TokenTextSplitter();
+    public TokenTextSplitter tokenTextSplitter(
+            @Value("${zagent.rag.chunk-size:800}") int chunkSize,
+            @Value("${zagent.rag.chunk-overlap:100}") int chunkOverlap) {
+        return new TokenTextSplitter(chunkSize, chunkOverlap, 5, 10000, true);
     }
 
 }
