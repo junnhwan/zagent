@@ -14,6 +14,7 @@ import io.wanjune.zagent.model.entity.*;
 import io.wanjune.zagent.model.enums.AdvisorTypeEnum;
 import io.wanjune.zagent.model.enums.TransportTypeEnum;
 import io.wanjune.zagent.service.AiClientAssemblyService;
+import io.wanjune.zagent.service.McpBindingResolver;
 import io.wanjune.zagent.service.McpConfigSyncService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
@@ -55,8 +56,6 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     private final List<McpSyncClient> mcpClientPool = Collections.synchronizedList(new ArrayList<>());
 
     @Resource
-    private AiClientConfigMapper aiClientConfigMapper;
-    @Resource
     private AiClientApiMapper aiClientApiMapper;
     @Resource
     private AiClientModelMapper aiClientModelMapper;
@@ -76,6 +75,8 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     private ThreadPoolExecutor executorService;
     @Resource
     private McpConfigSyncService mcpConfigSyncService;
+    @Resource
+    private McpBindingResolver mcpBindingResolver;
 
     /** {@inheritDoc} */
     @Override
@@ -170,42 +171,27 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     private ChatClient buildChatClient(String clientId) {
         log.info("Building ChatClient for clientId: {}", clientId);
 
-        // 1. Load all config relations for this client
-        List<AiClientConfig> configs = aiClientConfigMapper.selectBySource(Constants.TYPE_CLIENT, clientId);
-        if (configs == null || configs.isEmpty()) {
-            throw new RuntimeException("No config found for clientId: " + clientId);
-        }
-
-        // 2. Group target IDs by type
-        Map<String, List<String>> targetIdsByType = configs.stream()
-                .collect(Collectors.groupingBy(AiClientConfig::getTargetType,
-                        Collectors.mapping(AiClientConfig::getTargetId, Collectors.toList())));
+        var bindingResolution = mcpBindingResolver.resolve(clientId);
 
         // 3. Parallel load all configuration data
         CompletableFuture<AiClientModel> modelFuture = CompletableFuture.supplyAsync(() -> {
-            List<String> modelIds = targetIdsByType.getOrDefault(Constants.TYPE_MODEL, Collections.emptyList());
-            return modelIds.isEmpty() ? null : aiClientModelMapper.selectByModelId(modelIds.get(0));
+            return aiClientModelMapper.selectByModelId(bindingResolution.modelId());
         }, executorService);
 
         CompletableFuture<List<AiClientSystemPrompt>> promptFuture = CompletableFuture.supplyAsync(() -> {
-            List<String> promptIds = targetIdsByType.getOrDefault(Constants.TYPE_PROMPT, Collections.emptyList());
+            List<String> promptIds = bindingResolution.promptIds();
             return promptIds.isEmpty() ? Collections.emptyList() : aiClientSystemPromptMapper.selectByPromptIds(promptIds);
         }, executorService);
 
         CompletableFuture<List<AiClientAdvisor>> advisorFuture = CompletableFuture.supplyAsync(() -> {
-            List<String> advisorIds = targetIdsByType.getOrDefault(Constants.TYPE_ADVISOR, Collections.emptyList());
+            List<String> advisorIds = bindingResolution.advisorIds();
             return advisorIds.isEmpty() ? Collections.emptyList() : aiClientAdvisorMapper.selectByAdvisorIds(advisorIds);
         }, executorService);
 
         // Also load MCP tools linked to the model
-        CompletableFuture<List<AiClientToolMcp>> mcpFuture = modelFuture.thenComposeAsync(model -> {
-            if (model == null) return CompletableFuture.completedFuture(Collections.emptyList());
-            // Load MCP tools linked to this model
-            List<AiClientConfig> modelConfigs = aiClientConfigMapper.selectBySourceAndTargetType(
-                    Constants.TYPE_MODEL, model.getModelId(), Constants.TYPE_TOOL_MCP);
-            if (modelConfigs == null || modelConfigs.isEmpty()) return CompletableFuture.completedFuture(Collections.emptyList());
-            List<String> mcpIds = modelConfigs.stream().map(AiClientConfig::getTargetId).collect(Collectors.toList());
-            return CompletableFuture.completedFuture(aiClientToolMcpMapper.selectByMcpIds(mcpIds));
+        CompletableFuture<List<AiClientToolMcp>> mcpFuture = CompletableFuture.supplyAsync(() -> {
+            List<String> mcpIds = bindingResolution.mcpIds();
+            return mcpIds.isEmpty() ? Collections.emptyList() : aiClientToolMcpMapper.selectByMcpIds(mcpIds);
         }, executorService);
 
         // Wait for all futures
