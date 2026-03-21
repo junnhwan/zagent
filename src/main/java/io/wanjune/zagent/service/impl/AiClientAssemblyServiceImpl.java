@@ -355,22 +355,40 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
      * @return 初始化完成的MCP同步客户端
      */
     private McpSyncClient createStdioMcpClient(String transportConfig, Duration timeout) {
-        JSONObject config = JSON.parseObject(transportConfig);
-        // Config structure: { "toolName": { "command": "npx", "args": [...] } }
-        String toolName = config.keySet().iterator().next();
-        JSONObject toolConfig = config.getJSONObject(toolName);
-
-        String command = toolConfig.getString("command");
-        List<String> args = toolConfig.getJSONArray("args").toJavaList(String.class);
-
-        ServerParameters params = ServerParameters.builder(command)
-                .args(args.toArray(new String[0]))
-                .build();
+        ServerParameters params = buildServerParameters(transportConfig);
 
         McpSyncClient client = McpClient.sync(new StdioClientTransport(params))
                 .requestTimeout(timeout).build();
         client.initialize();
         return client;
+    }
+
+    static ServerParameters buildServerParameters(String transportConfig) {
+        JSONObject config = JSON.parseObject(transportConfig);
+        String toolName = config.keySet().iterator().next();
+        JSONObject toolConfig = config.getJSONObject(toolName);
+
+        String command = toolConfig.getString("command");
+        List<String> args = toolConfig.getJSONArray("args") != null
+                ? toolConfig.getJSONArray("args").toJavaList(String.class)
+                : Collections.emptyList();
+        Map<String, String> env = new LinkedHashMap<>();
+        JSONObject envConfig = toolConfig.getJSONObject("env");
+        if (envConfig != null) {
+            for (String key : envConfig.keySet()) {
+                Object value = envConfig.get(key);
+                if (value != null) {
+                    env.put(key, String.valueOf(value));
+                }
+            }
+        }
+
+        ServerParameters.Builder builder = ServerParameters.builder(command)
+                .args(args);
+        if (!env.isEmpty()) {
+            builder.env(env);
+        }
+        return builder.build();
     }
 
     /**

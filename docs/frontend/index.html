@@ -1588,13 +1588,14 @@ async function sendAgent() {
       let currentNode = null;
       let currentContent = '';
       let finished = false;
+      let hasReceivedEvent = false;
 
       const cleanup = () => {
         if (finished) return;
         finished = true;
         eventSource.close();
         if (currentNode) updateLastActiveNode(container, { status: 'done' });
-        else addStageNode(container, { stage: '错误', status: 'error', content: '连接失败，请检查后端是否启动以及 Agent ID 是否正确' }, false);
+        else if (!hasReceivedEvent) addStageNode(container, { stage: '错误', status: 'error', content: '连接失败，请检查后端是否启动以及 Agent ID 是否正确' }, false);
         agentLoading = false;
         document.getElementById('agentSendBtn').disabled = false;
       };
@@ -1602,6 +1603,7 @@ async function sendAgent() {
       eventSource.onmessage = (e) => {
         try {
           const event = JSON.parse(e.data);
+          hasReceivedEvent = true;
           if (event.status === 'active') {
             // 新阶段开始: 创建 active 节点（带 typing indicator）
             currentContent = '';
@@ -1643,7 +1645,7 @@ async function sendAgent() {
       });
       const json = await res.json();
       const resultData = json.data || {};
-      const content = resultData.result || resultData.content || JSON.stringify(resultData);
+      const content = resultData.finalOutput || resultData.result || resultData.content || JSON.stringify(resultData);
       updateLastActiveNode(container, { status: 'done', content });
       addStageNode(container, { stage: '完成', status: 'done', content: '执行完成' }, false);
     }
