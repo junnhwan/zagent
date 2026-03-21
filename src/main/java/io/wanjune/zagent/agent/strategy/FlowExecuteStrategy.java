@@ -191,7 +191,8 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         if (planningClientId != null) {
             log.info("Flow策略 - 开始制定执行计划");
             ChatClient planningClient = aiClientAssemblyService.getOrBuildChatClient(planningClientId);
-            String prompt = String.format(planningPrompt, userInput, toolAnalysis);
+            String prompt = String.format(planningPrompt, userInput, toolAnalysis)
+                    + "\n\n## 步数限制\n最多规划 " + context.getMaxStep() + " 步，严禁输出超过该数量的执行步骤。";
             sendStageEvent(emitter, "planning", "active", 2, 0, null, context.getConversationId());
             planResult = callClient(planningClient, prompt, context.getConversationId());
             sendStageEvent(emitter, "planning", "done", 2, 0, planResult, context.getConversationId());
@@ -203,6 +204,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         if (stepsMap.isEmpty()) {
             stepsMap.put(1, planResult.isEmpty() ? userInput : planResult);
         }
+        stepsMap = limitExecutionSteps(stepsMap, context.getMaxStep());
         log.info("Flow策略 - 解析出{}个执行步骤", stepsMap.size());
 
         // === 阶段4: 逐步执行 ===
@@ -263,6 +265,19 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
     /**
      * 解析执行计划为步骤Map（双重模式匹配）
      */
+    static Map<Integer, String> limitExecutionSteps(Map<Integer, String> sourceSteps, int maxStep) {
+        if (sourceSteps == null || sourceSteps.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        int safeMaxStep = maxStep > 0 ? maxStep : 3;
+        Map<Integer, String> limited = new LinkedHashMap<>();
+        sourceSteps.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .limit(safeMaxStep)
+                .forEach(entry -> limited.put(entry.getKey(), entry.getValue()));
+        return limited;
+    }
+
     private Map<Integer, String> parseExecutionSteps(String planText) {
         Map<Integer, String> steps = new LinkedHashMap<>();
         if (planText == null || planText.isBlank()) return steps;

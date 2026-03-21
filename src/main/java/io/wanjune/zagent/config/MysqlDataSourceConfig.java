@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
 import java.util.Objects;
@@ -93,6 +94,11 @@ public class MysqlDataSourceConfig {
     @Bean("sqlSessionTemplate")
     public SqlSessionTemplate sqlSessionTemplate(@Qualifier("sqlSessionFactory") SqlSessionFactoryBean sqlSessionFactory) throws Exception {
         return new SqlSessionTemplate(Objects.requireNonNull(sqlSessionFactory.getObject()));
+    }
+
+    @Bean("mysqlJdbcTemplate")
+    public JdbcTemplate mysqlJdbcTemplate(@Qualifier("mysqlDataSource") DataSource mysqlDataSource) {
+        return new JdbcTemplate(mysqlDataSource);
     }
 
 }

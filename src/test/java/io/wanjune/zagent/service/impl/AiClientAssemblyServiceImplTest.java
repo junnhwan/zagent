@@ -33,4 +33,19 @@ class AiClientAssemblyServiceImplTest {
                 "TEST_MODE", "true"
         ));
     }
+
+    @Test
+    void normalizeSseConfigNormalizesBaseUriAndEndpointSlashes() {
+        assertThat(AiClientAssemblyServiceImpl.normalizeSseBaseUri("http://127.0.0.1:18080/"))
+                .isEqualTo("http://127.0.0.1:18080");
+
+        assertThat(AiClientAssemblyServiceImpl.normalizeSseEndpoint("/sse"))
+                .isEqualTo("/sse");
+
+        assertThat(AiClientAssemblyServiceImpl.normalizeSseEndpoint("sse/"))
+                .isEqualTo("/sse");
+
+        assertThat(AiClientAssemblyServiceImpl.normalizeSseEndpoint(null))
+                .isEqualTo("/sse");
+    }
 }

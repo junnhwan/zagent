@@ -14,6 +14,7 @@ import io.wanjune.zagent.model.entity.*;
 import io.wanjune.zagent.model.enums.AdvisorTypeEnum;
 import io.wanjune.zagent.model.enums.TransportTypeEnum;
 import io.wanjune.zagent.service.AiClientAssemblyService;
+import io.wanjune.zagent.service.McpConfigSyncService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -40,17 +41,17 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
 
 /**
- * AI客户端动态装配服务实现。
- * <p>核心流程: clientId -> DB查询配置 -> 构建OpenAiApi -> 构建ChatModel -> 装配Advisors/MCP工具 -> 返回ChatClient。
- * 使用 {@link ConcurrentHashMap} 缓存已构建的ChatClient实例, 避免重复构建。
- * 实现 DisposableBean 在应用关闭时清理MCP客户端资源。</p>
+ * AI鐎广垺鍩涚粩顖氬З閹浇顥婇柊宥嗘箛閸斺€崇杽閻滆埇鈧?
+ * <p>閺嶇绺惧ù浣衡柤: clientId -> DB閺屻儴顕楅柊宥囩枂 -> 閺嬪嫬缂揙penAiApi -> 閺嬪嫬缂揅hatModel -> 鐟佸懘鍘dvisors/MCP瀹搞儱鍙?-> 鏉╂柨娲朇hatClient閵?
+ * 娴ｈ法鏁?{@link ConcurrentHashMap} 缂傛挸鐡ㄥ鍙夌€铏规畱ChatClient鐎圭偘绶? 闁灝鍘ら柌宥咁槻閺嬪嫬缂撻妴?
+ * 鐎圭偟骞?DisposableBean 閸︺劌绨查悽銊ュ彠闂傤厽妞傚〒鍛倞MCP鐎广垺鍩涚粩顖濈カ濠ф劑鈧?/p>
  */
 @Slf4j
 @Service
 public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org.springframework.beans.factory.DisposableBean {
 
     private final ConcurrentHashMap<String, ChatClient> clientCache = new ConcurrentHashMap<>();
-    /** MCP客户端资源池, 用于关闭时清理 */
+    /** MCP鐎广垺鍩涚粩顖濈カ濠ф劖鐫? 閻劋绨崗鎶芥４閺冭埖绔婚悶?*/
     private final List<McpSyncClient> mcpClientPool = Collections.synchronizedList(new ArrayList<>());
 
     @Resource
@@ -73,6 +74,8 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     @Resource
     @Qualifier("executorService")
     private ThreadPoolExecutor executorService;
+    @Resource
+    private McpConfigSyncService mcpConfigSyncService;
 
     /** {@inheritDoc} */
     @Override
@@ -84,47 +87,48 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     @Override
     public void invalidate(String clientId) {
         clientCache.remove(clientId);
-        log.info("ChatClient缓存已失效: {}", clientId);
+        log.info("ChatClient缂傛挸鐡ㄥ鎻掋亼閺? {}", clientId);
     }
 
     /**
-     * 应用关闭时清理所有MCP客户端资源
+     * 鎼存梻鏁ら崗鎶芥４閺冭埖绔婚悶鍡樺閺堝CP鐎广垺鍩涚粩顖濈カ濠?
      */
     @Override
     public void destroy() {
-        log.info("正在关闭{}个MCP客户端...", mcpClientPool.size());
+        log.info("濮濓絽婀崗鎶芥４{}娑撶嫻CP鐎广垺鍩涚粩?..", mcpClientPool.size());
         for (McpSyncClient client : mcpClientPool) {
             try {
                 client.close();
             } catch (Exception e) {
-                log.warn("关闭MCP客户端失败: {}", e.getMessage());
+                log.warn("閸忔娊妫碝CP鐎广垺鍩涚粩顖氥亼鐠? {}", e.getMessage());
             }
         }
         mcpClientPool.clear();
         clientCache.clear();
-        log.info("MCP客户端和ChatClient缓存已全部清理");
+        log.info("MCP clients and ChatClient cache cleared");
     }
 
     /**
-     * 启动预热: 异步预构建所有FlowConfig中引用的ChatClient
+     * 閸氼垰濮╂０鍕劰: 瀵倹顒炴０鍕€鐑樺閺堝lowConfig娑擃厼绱╅悽銊ф畱ChatClient
      */
     @PostConstruct
     public void init() {
         executorService.execute(() -> {
             try {
-                Thread.sleep(3000); // 等待其他Bean初始化完成
+                mcpConfigSyncService.syncIfEnabled();
+                Thread.sleep(3000); // 缁涘绶熼崗鏈电铂Bean閸掓繂顫愰崠鏍х暚閹?
                 warmUpAll();
             } catch (Exception e) {
-                log.warn("启动预热失败, 将在首次请求时构建: {}", e.getMessage());
+                log.warn("閸氼垰濮╂０鍕劰婢惰精瑙? 鐏忓棗婀＃鏍偧鐠囬攱鐪伴弮鑸电€? {}", e.getMessage());
             }
         });
     }
 
     @Override
     public void warmUpAll() {
-        log.info("开始预热ChatClient...");
+        log.info("瀵偓婵顣╅悜鐟縣atClient...");
         try {
-            // 获取所有FlowConfig中引用的clientId（去重）
+            // 閼惧嘲褰囬幍鈧張濉卨owConfig娑擃厼绱╅悽銊ф畱clientId閿涘牆骞撻柌宥忕礆
             List<AiAgentFlowConfig> allFlowConfigs = aiAgentFlowConfigMapper.selectAll();
             Set<String> clientIds = new LinkedHashSet<>();
             for (AiAgentFlowConfig config : allFlowConfigs) {
@@ -137,31 +141,31 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
                     getOrBuildChatClient(clientId);
                     success++;
                 } catch (Exception e) {
-                    log.warn("预热clientId={}失败: {}", clientId, e.getMessage());
+                    log.warn("妫板嫮鍎筩lientId={}婢惰精瑙? {}", clientId, e.getMessage());
                 }
             }
-            log.info("预热完成: {}/{} 个ChatClient构建成功", success, clientIds.size());
+            log.info("妫板嫮鍎圭€瑰本鍨? {}/{} 娑撶嫝hatClient閺嬪嫬缂撻幋鎰", success, clientIds.size());
         } catch (Exception e) {
-            log.warn("预热过程异常: {}", e.getMessage());
+            log.warn("妫板嫮鍎规潻鍥┾柤瀵倸鐖? {}", e.getMessage());
         }
     }
 
     /**
-     * 核心方法 - 从数据库配置构建完整的ChatClient实例。
-     * <p>执行步骤:
+     * 閺嶇绺鹃弬瑙勭《 - 娴犲孩鏆熼幑顔肩氨闁板秶鐤嗛弸鍕紦鐎瑰本鏆ｉ惃鍑渉atClient鐎圭偘绶ラ妴?
+     * <p>閹笛嗩攽濮濄儵顎?
      * <ol>
-     *   <li>加载clientId对应的所有配置关联关系</li>
-     *   <li>按目标类型分组, 并行加载Model/Prompt/Advisor/MCP配置</li>
-     *   <li>构建OpenAiApi（API地址和密钥）</li>
-     *   <li>构建MCP工具回调列表</li>
-     *   <li>构建ChatModel（含模型参数和工具回调）</li>
-     *   <li>拼接系统提示词</li>
-     *   <li>构建Advisor链</li>
-     *   <li>组装并返回最终的ChatClient</li>
+     *   <li>閸旂姾娴嘽lientId鐎电懓绨查惃鍕閺堝鍘ょ純顔煎彠閼辨柨鍙х化?/li>
+     *   <li>閹稿娲伴弽鍥╄閸ㄥ鍨庣紒? 楠炴儼顢戦崝鐘烘祰Model/Prompt/Advisor/MCP闁板秶鐤?/li>
+     *   <li>閺嬪嫬缂揙penAiApi閿涘湏PI閸︽澘娼冮崪灞界槕闁姐儻绱?/li>
+     *   <li>閺嬪嫬缂揗CP瀹搞儱鍙块崶鐐剁殶閸掓銆?/li>
+     *   <li>閺嬪嫬缂揅hatModel閿涘牆鎯堝Ο鈥崇€烽崣鍌涙殶閸滃苯浼愰崗宄版礀鐠嬪喛绱?/li>
+     *   <li>閹峰吋甯寸化鑽ょ埠閹绘劗銇氱拠?/li>
+     *   <li>閺嬪嫬缂揂dvisor闁?/li>
+     *   <li>缂佸嫯顥婇獮鎯扮箲閸ョ偞娓剁紒鍫㈡畱ChatClient</li>
      * </ol></p>
      *
-     * @param clientId 客户端标识ID
-     * @return 组装完成的ChatClient实例
+     * @param clientId 鐎广垺鍩涚粩顖涚垼鐠囧捄D
+     * @return 缂佸嫯顥婄€瑰本鍨氶惃鍑渉atClient鐎圭偘绶?
      */
     private ChatClient buildChatClient(String clientId) {
         log.info("Building ChatClient for clientId: {}", clientId);
@@ -270,12 +274,12 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 根据MCP配置创建工具回调列表。
-     * <p>遍历MCP工具配置, 为每个配置创建McpSyncClient, 然后通过
-     * {@link SyncMcpToolCallbackProvider} 统一转换为ToolCallback列表。</p>
+     * 閺嶈宓丮CP闁板秶鐤嗛崚娑樼紦瀹搞儱鍙块崶鐐剁殶閸掓銆冮妴?
+     * <p>闁秴宸籑CP瀹搞儱鍙块柊宥囩枂, 娑撶儤鐦℃稉顏堝帳缂冾喖鍨卞绡梒pSyncClient, 閻掕泛鎮楅柅姘崇箖
+     * {@link SyncMcpToolCallbackProvider} 缂佺喍绔存潪顒佸床娑撶oolCallback閸掓銆冮妴?/p>
      *
-     * @param mcpTools MCP工具配置列表
-     * @return 工具回调列表, 如果无MCP配置则返回空列表
+     * @param mcpTools MCP瀹搞儱鍙块柊宥囩枂閸掓銆?
+     * @return 瀹搞儱鍙块崶鐐剁殶閸掓銆? 婵″倹鐏夐弮鐕P闁板秶鐤嗛崚娆掔箲閸ョ偟鈹栭崚妤勩€?
      */
     private List<ToolCallback> buildMcpToolCallbacks(List<AiClientToolMcp> mcpTools) {
         if (mcpTools == null || mcpTools.isEmpty()) {
@@ -287,7 +291,7 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
             try {
                 McpSyncClient mcpClient = createMcpClient(mcp);
                 mcpClients.add(mcpClient);
-                mcpClientPool.add(mcpClient); // 加入资源池, 关闭时统一清理
+                mcpClientPool.add(mcpClient); // 閸旂姴鍙嗙挧鍕爱濮? 閸忔娊妫撮弮鍓佺埠娑撯偓濞撳懐鎮?
                 log.info("MCP client initialized: {} ({})", mcp.getMcpName(), mcp.getTransportType());
             } catch (Exception e) {
                 log.error("Failed to create MCP client: {} - {}", mcp.getMcpName(), e.getMessage());
@@ -303,11 +307,11 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 根据传输类型创建MCP客户端。
-     * <p>支持SSE和Stdio两种传输方式, 根据配置中的transportType字段自动选择。</p>
+     * 閺嶈宓佹导鐘虹翻缁鐎烽崚娑樼紦MCP鐎广垺鍩涚粩顖樷偓?
+     * <p>閺€顖涘瘮SSE閸滃tdio娑撱倗顫掓导鐘虹翻閺傜懓绱? 閺嶈宓侀柊宥囩枂娑擃厾娈憈ransportType鐎涙顔岄懛顏勫З闁瀚ㄩ妴?/p>
      *
-     * @param mcp MCP工具配置实体
-     * @return 初始化完成的MCP同步客户端
+     * @param mcp MCP瀹搞儱鍙块柊宥囩枂鐎圭偘缍?
+     * @return 閸掓繂顫愰崠鏍х暚閹存劗娈慚CP閸氬本顒炵€广垺鍩涚粩?
      */
     private McpSyncClient createMcpClient(AiClientToolMcp mcp) {
         TransportTypeEnum transportType = TransportTypeEnum.of(mcp.getTransportType());
@@ -321,17 +325,17 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 创建SSE传输的MCP客户端。
-     * <p>从transportConfig JSON中解析baseUri和sseEndpoint, 构建HttpClientSseClientTransport。</p>
+     * 閸掓稑缂揝SE娴肩姾绶惃鍑狢P鐎广垺鍩涚粩顖樷偓?
+     * <p>娴犲窐ransportConfig JSON娑擃叀袙閺嬫亣aseUri閸滃seEndpoint, 閺嬪嫬缂揌ttpClientSseClientTransport閵?/p>
      *
-     * @param transportConfig 传输配置JSON字符串, 包含baseUri和可选的sseEndpoint
-     * @param timeout         请求超时时间
-     * @return 初始化完成的MCP同步客户端
+     * @param transportConfig 娴肩姾绶柊宥囩枂JSON鐎涙顑佹稉? 閸栧懎鎯坆aseUri閸滃苯褰查柅澶屾畱sseEndpoint
+     * @param timeout         鐠囬攱鐪扮搾鍛閺冨爼妫?
+     * @return 閸掓繂顫愰崠鏍х暚閹存劗娈慚CP閸氬本顒炵€广垺鍩涚粩?
      */
     private McpSyncClient createSseMcpClient(String transportConfig, Duration timeout) {
         JSONObject config = JSON.parseObject(transportConfig);
-        String baseUri = config.getString("baseUri");
-        String sseEndpoint = config.getString("sseEndpoint");
+        String baseUri = normalizeSseBaseUri(config.getString("baseUri"));
+        String sseEndpoint = normalizeSseEndpoint(config.getString("sseEndpoint"));
 
         HttpClientSseClientTransport transport;
         if (sseEndpoint != null && !sseEndpoint.isEmpty()) {
@@ -346,13 +350,13 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 创建Stdio传输的MCP客户端。
-     * <p>从transportConfig JSON中解析command和args, 构建StdioClientTransport。
-     * 配置格式: {"toolName": {"command": "npx", "args": [...]}}</p>
+     * 閸掓稑缂揝tdio娴肩姾绶惃鍑狢P鐎广垺鍩涚粩顖樷偓?
+     * <p>娴犲窐ransportConfig JSON娑擃叀袙閺嬫亪ommand閸滃畮rgs, 閺嬪嫬缂揝tdioClientTransport閵?
+     * 闁板秶鐤嗛弽鐓庣础: {"toolName": {"command": "npx", "args": [...]}}</p>
      *
-     * @param transportConfig 传输配置JSON字符串, 包含命令和参数
-     * @param timeout         请求超时时间
-     * @return 初始化完成的MCP同步客户端
+     * @param transportConfig 娴肩姾绶柊宥囩枂JSON鐎涙顑佹稉? 閸栧懎鎯堥崨鎴掓姢閸滃苯寮弫?
+     * @param timeout         鐠囬攱鐪扮搾鍛閺冨爼妫?
+     * @return 閸掓繂顫愰崠鏍х暚閹存劗娈慚CP閸氬本顒炵€广垺鍩涚粩?
      */
     private McpSyncClient createStdioMcpClient(String transportConfig, Duration timeout) {
         ServerParameters params = buildServerParameters(transportConfig);
@@ -391,13 +395,38 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
         return builder.build();
     }
 
+    static String normalizeSseBaseUri(String baseUri) {
+        if (baseUri == null || baseUri.isBlank()) {
+            throw new IllegalArgumentException("baseUri must not be blank");
+        }
+        String normalized = baseUri.trim();
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    static String normalizeSseEndpoint(String sseEndpoint) {
+        if (sseEndpoint == null || sseEndpoint.isBlank()) {
+            return "/sse";
+        }
+        String normalized = sseEndpoint.trim();
+        if (!normalized.startsWith("/")) {
+            normalized = "/" + normalized;
+        }
+        while (normalized.length() > 1 && normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
     /**
-     * 根据配置构建Advisor链（ChatMemory/RAG/Logger）。
-     * <p>遍历Advisor配置列表, 为每个配置创建对应类型的Advisor实例,
-     * 并在末尾始终追加 {@link SimpleLoggerAdvisor} 用于日志记录。</p>
+     * 閺嶈宓侀柊宥囩枂閺嬪嫬缂揂dvisor闁炬拝绱機hatMemory/RAG/Logger閿涘鈧?
+     * <p>闁秴宸籄dvisor闁板秶鐤嗛崚妤勩€? 娑撶儤鐦℃稉顏堝帳缂冾喖鍨卞鍝勵嚠鎼存梻琚崹瀣畱Advisor鐎圭偘绶?
+     * 楠炶泛婀張顐㈢啲婵绮撴潻钘夊 {@link SimpleLoggerAdvisor} 閻劋绨弮銉ョ箶鐠佹澘缍嶉妴?/p>
      *
-     * @param advisorConfigs Advisor配置列表
-     * @return 构建完成的Advisor列表
+     * @param advisorConfigs Advisor闁板秶鐤嗛崚妤勩€?
+     * @return 閺嬪嫬缂撶€瑰本鍨氶惃鍑檇visor閸掓銆?
      */
     private List<Advisor> buildAdvisors(List<AiClientAdvisor> advisorConfigs) {
         List<Advisor> advisors = new ArrayList<>();
@@ -417,15 +446,15 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 根据配置创建单个Advisor实例。
-     * <p>支持的Advisor类型:
+     * 閺嶈宓侀柊宥囩枂閸掓稑缂撻崡鏇氶嚋Advisor鐎圭偘绶ラ妴?
+     * <p>閺€顖涘瘮閻ㄥ嚈dvisor缁鐎?
      * <ul>
-     *   <li>{@code CHAT_MEMORY} - 对话记忆Advisor, 基于消息窗口保持上下文</li>
-     *   <li>{@code RAG_ANSWER} - RAG检索增强Advisor, 从向量库检索相关文档注入上下文</li>
+     *   <li>{@code CHAT_MEMORY} - 鐎电鐦界拋鏉跨箓Advisor, 閸╄桨绨☉鍫熶紖缁愭褰涙穱婵囧瘮娑撳﹣绗呴弬?/li>
+     *   <li>{@code RAG_ANSWER} - RAG濡偓缁便垹顤冨绡坉visor, 娴犲骸鎮滈柌蹇撶氨濡偓缁便垻娴夐崗铏瀮濡楋絾鏁為崗銉ょ瑐娑撳鏋?/li>
      * </ul></p>
      *
-     * @param config Advisor配置实体, 包含类型和扩展参数
-     * @return 创建的Advisor实例
+     * @param config Advisor闁板秶鐤嗙€圭偘缍? 閸栧懎鎯堢猾璇茬€烽崪灞惧⒖鐏炴洖寮弫?
+     * @return 閸掓稑缂撻惃鍑檇visor鐎圭偘绶?
      */
     private Advisor createAdvisor(AiClientAdvisor config) {
         AdvisorTypeEnum type = AdvisorTypeEnum.of(config.getAdvisorType());

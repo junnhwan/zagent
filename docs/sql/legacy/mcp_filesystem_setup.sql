@@ -22,7 +22,7 @@ VALUES (
   '5001',
   'filesystem-docs',
   'stdio',
-  '{"filesystem":{"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","D:\\\\dev\\\\my_proj\\\\zagent\\\\docs"],"env":{"MCP_LOG_LEVEL":"info"}}}',
+  '{"filesystem":{"command":"D:\\\\node.js\\\\npx.cmd","args":["-y","@modelcontextprotocol/server-filesystem","D:\\\\dev\\\\my_proj\\\\zagent\\\\docs"],"env":{"MCP_LOG_LEVEL":"info"}}}',
   10,
   1
 )
@@ -60,3 +60,8 @@ SELECT * FROM `ai_client_config` WHERE `source_id` IN ('2002', '3006', '3008') O
 -- 重启后端后，在 docs/ 下新建 mcp_probe.txt，内容写：本次MCP测试码: 7QX-314159
 -- 前端 Agent 页使用 agentId=3 提问：
 -- 必须使用 MCP 工具读取 docs/mcp_probe.txt，返回文件名和测试码，不要猜测。
+
+-- 7) 如果你已经执行过旧版 SQL，可直接执行下面这条 UPDATE 修复现有配置
+-- UPDATE `ai_client_tool_mcp`
+-- SET `transport_config` = '{"filesystem":{"command":"D:\\\\node.js\\\\npx.cmd","args":["-y","@modelcontextprotocol/server-filesystem","D:\\\\dev\\\\my_proj\\\\zagent\\\\docs"],"env":{"MCP_LOG_LEVEL":"info"}}}'
+-- WHERE `mcp_id` = '5001';

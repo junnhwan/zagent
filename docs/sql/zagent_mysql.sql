@@ -1,6 +1,13 @@
 -- ============================================================
 -- ZAgent MySQL Schema
 -- ============================================================
+-- 用途说明：
+-- 1) 本文件是 ZAgent 的 MySQL 主初始化脚本，负责核心表结构 + 基础示例数据。
+-- 2) 建议首次初始化数据库时执行本文件；日常切换 MCP 场景时不要再依赖额外 SQL。
+-- 3) 从 2026-03-21 起，MCP 的 model/tool/binding 推荐统一通过
+--    `src/main/resources/mcp-tools.json` 在应用启动时自动同步到 MySQL。
+-- 4) 历史上的 MCP 场景脚本、修复脚本已归档到 `docs/sql/legacy/`，仅作参考。
+-- 5) 向量库相关表结构请执行独立脚本 `docs/sql/zagent_pgvector.sql`。
 
 CREATE DATABASE IF NOT EXISTS `zagent` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 USE `zagent`;
@@ -183,6 +190,11 @@ CREATE TABLE `ai_client_config` (
 -- ============================================================
 -- Sample Data
 -- ============================================================
+-- 说明：
+-- 1) 下方数据用于让项目在初始化后即可具备基础可运行能力。
+-- 2) 这里保留的是通用 API / Model / Client / Agent / Flow 示例。
+-- 3) MCP 相关样例不再继续堆叠在本文件里，避免出现多套场景相互覆盖、难以维护。
+-- 4) 如果需要切换 stdio / sse / amap 等 MCP 组合，请修改 `mcp-tools.json` 后重启应用。
 
 -- API config
 INSERT INTO `ai_client_api` (`api_id`, `base_url`, `api_key`, `completions_path`, `embeddings_path`)
