@@ -47,10 +47,10 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
 
 /**
- * AI鐎广垺鍩涚粩顖氬З閹浇顥婇柊宥嗘箛閸斺€崇杽閻滆埇鈧?
- * <p>閺嶇绺惧ù浣衡柤: clientId -> DB閺屻儴顕楅柊宥囩枂 -> 閺嬪嫬缂揙penAiApi -> 閺嬪嫬缂揅hatModel -> 鐟佸懘鍘dvisors/MCP瀹搞儱鍙?-> 鏉╂柨娲朇hatClient閵?
- * 娴ｈ法鏁?{@link ConcurrentHashMap} 缂傛挸鐡ㄥ鍙夌€铏规畱ChatClient鐎圭偘绶? 闁灝鍘ら柌宥咁槻閺嬪嫬缂撻妴?
- * 鐎圭偟骞?DisposableBean 閸︺劌绨查悽銊ュ彠闂傤厽妞傚〒鍛倞MCP鐎广垺鍩涚粩顖濈カ濠ф劑鈧?/p>
+ * AI Client 运行时装配服务实现。
+ * <p>核心链路：clientId -> 解析数据库绑定关系 -> 构建 OpenAiApi -> 构建 ChatModel ->
+ * 组装 Advisors / MCP Tools -> 生成 ChatClient。
+ * 使用 {@link ConcurrentHashMap} 缓存已构建的 ChatClient，并在销毁时统一关闭 MCP 客户端。</p>
  */
 @Slf4j
 @Service
@@ -58,7 +58,7 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
 
     private final ConcurrentHashMap<String, ChatClient> clientCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, McpRuntimeState> mcpRuntimeStates = new ConcurrentHashMap<>();
-    /** MCP鐎广垺鍩涚粩顖濈カ濠ф劖鐫? 閻劋绨崗鎶芥４閺冭埖绔婚悶?*/
+    /** 已初始化的 MCP 同步客户端池，用于应用关闭时统一释放资源。 */
     private final List<McpSyncClient> mcpClientPool = Collections.synchronizedList(new ArrayList<>());
 
     @Resource
@@ -100,7 +100,7 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 鎼存梻鏁ら崗鎶芥４閺冭埖绔婚悶鍡樺閺堝CP鐎广垺鍩涚粩顖濈カ濠?
+     * 关闭缓存中的 MCP 客户端，并清空 ChatClient 缓存。
      */
     @Override
     public void destroy() {
@@ -118,14 +118,14 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 閸氼垰濮╂０鍕劰: 瀵倹顒炴０鍕€鐑樺閺堝lowConfig娑擃厼绱╅悽銊ф畱ChatClient
+     * 启动后先同步 MCP 配置，再预热 Flow 中涉及到的 ChatClient。
      */
     @PostConstruct
     public void init() {
         executorService.execute(() -> {
             try {
                 mcpConfigSyncService.syncIfEnabled();
-                Thread.sleep(3000); // 缁涘绶熼崗鏈电铂Bean閸掓繂顫愰崠鏍х暚閹?
+                Thread.sleep(3000); // 等待相关 Bean 和外部资源完成初始化
                 warmUpAll();
             } catch (Exception e) {
                 log.warn("Failed to load MCP sync config during startup warm-up: {}", e.getMessage());
@@ -137,7 +137,7 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     public void warmUpAll() {
         log.info("Starting ChatClient warm-up...");
         try {
-            // 閼惧嘲褰囬幍鈧張濉卨owConfig娑擃厼绱╅悽銊ф畱clientId閿涘牆骞撻柌宥忕礆
+            // 从所有 Flow 配置中提取需要预热的 clientId，避免重复构建
             List<AiAgentFlowConfig> allFlowConfigs = aiAgentFlowConfigMapper.selectAll();
             Set<String> clientIds = new LinkedHashSet<>();
             for (AiAgentFlowConfig config : allFlowConfigs) {
@@ -165,21 +165,21 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 閺嶇绺鹃弬瑙勭《 - 娴犲孩鏆熼幑顔肩氨闁板秶鐤嗛弸鍕紦鐎瑰本鏆ｉ惃鍑渉atClient鐎圭偘绶ラ妴?
-     * <p>閹笛嗩攽濮濄儵顎?
+     * 按 clientId 动态构建 ChatClient。
+     * <p>主要步骤：
      * <ol>
-     *   <li>閸旂姾娴嘽lientId鐎电懓绨查惃鍕閺堝鍘ょ純顔煎彠閼辨柨鍙х化?/li>
-     *   <li>閹稿娲伴弽鍥╄閸ㄥ鍨庣紒? 楠炴儼顢戦崝鐘烘祰Model/Prompt/Advisor/MCP闁板秶鐤?/li>
-     *   <li>閺嬪嫬缂揙penAiApi閿涘湏PI閸︽澘娼冮崪灞界槕闁姐儻绱?/li>
-     *   <li>閺嬪嫬缂揗CP瀹搞儱鍙块崶鐐剁殶閸掓銆?/li>
-     *   <li>閺嬪嫬缂揅hatModel閿涘牆鎯堝Ο鈥崇€烽崣鍌涙殶閸滃苯浼愰崗宄版礀鐠嬪喛绱?/li>
-     *   <li>閹峰吋甯寸化鑽ょ埠閹绘劗銇氱拠?/li>
-     *   <li>閺嬪嫬缂揂dvisor闁?/li>
-     *   <li>缂佸嫯顥婇獮鎯扮箲閸ョ偞娓剁紒鍫㈡畱ChatClient</li>
+     *   <li>解析 clientId 对应的模型、Prompt、Advisor 和 MCP 绑定关系；</li>
+     *   <li>并行加载 Model、Prompt、Advisor、MCP 配置；</li>
+     *   <li>根据模型关联的 API 配置构建 {@link OpenAiApi}；</li>
+     *   <li>将 MCP 配置转换为可调用的 ToolCallback；</li>
+     *   <li>构建 {@link OpenAiChatModel} 并附加工具能力；</li>
+     *   <li>拼接系统提示词；</li>
+     *   <li>创建 Advisors；</li>
+     *   <li>最终组装并返回 ChatClient。</li>
      * </ol></p>
      *
-     * @param clientId 鐎广垺鍩涚粩顖涚垼鐠囧捄D
-     * @return 缂佸嫯顥婄€瑰本鍨氶惃鍑渉atClient鐎圭偘绶?
+     * @param clientId 客户端 ID
+     * @return 组装完成的 ChatClient
      */
     private ChatClient buildChatClient(String clientId) {
         log.info("Building ChatClient for clientId: {}", clientId);
@@ -273,12 +273,12 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 閺嶈宓丮CP闁板秶鐤嗛崚娑樼紦瀹搞儱鍙块崶鐐剁殶閸掓銆冮妴?
-     * <p>闁秴宸籑CP瀹搞儱鍙块柊宥囩枂, 娑撶儤鐦℃稉顏堝帳缂冾喖鍨卞绡梒pSyncClient, 閻掕泛鎮楅柅姘崇箖
-     * {@link SyncMcpToolCallbackProvider} 缂佺喍绔存潪顒佸床娑撶oolCallback閸掓銆冮妴?/p>
+     * 将 MCP 配置转换为 Spring AI 可调用的工具回调。
+     * <p>方法会先为每个 MCP 配置创建对应的 {@link McpSyncClient}，
+     * 再通过 {@link SyncMcpToolCallbackProvider} 统一转换为 {@link ToolCallback}。</p>
      *
-     * @param mcpTools MCP瀹搞儱鍙块柊宥囩枂閸掓銆?
-     * @return 瀹搞儱鍙块崶鐐剁殶閸掓銆? 婵″倹鐏夐弮鐕P闁板秶鐤嗛崚娆掔箲閸ョ偟鈹栭崚妤勩€?
+     * @param mcpTools MCP 工具配置列表
+     * @return 可挂载到 ChatModel / ChatClient 的工具回调列表
      */
     private List<ToolCallback> buildMcpToolCallbacks(List<AiClientToolMcp> mcpTools) {
         if (mcpTools == null || mcpTools.isEmpty()) {
@@ -294,7 +294,7 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
             try {
                 McpSyncClient mcpClient = createMcpClient(mcp);
                 mcpClients.add(mcpClient);
-                mcpClientPool.add(mcpClient); // 閸旂姴鍙嗙挧鍕爱濮? 閸忔娊妫撮弮鍓佺埠娑撯偓濞撳懐鎮?
+                mcpClientPool.add(mcpClient); // 纳入连接池，便于应用关闭时统一释放
                 mcpRuntimeStates.put(mcp.getMcpId(), new McpRuntimeState(true, null, Instant.now()));
                 log.info("MCP client initialized: {} ({})", mcp.getMcpName(), mcp.getTransportType());
             } catch (Exception e) {
@@ -390,11 +390,11 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 閺嶈宓佹导鐘虹翻缁鐎烽崚娑樼紦MCP鐎广垺鍩涚粩顖樷偓?
-     * <p>閺€顖涘瘮SSE閸滃tdio娑撱倗顫掓导鐘虹翻閺傜懓绱? 閺嶈宓侀柊宥囩枂娑擃厾娈憈ransportType鐎涙顔岄懛顏勫З闁瀚ㄩ妴?/p>
+     * 按传输类型创建 MCP 同步客户端。
+     * <p>当前支持 SSE 和 stdio 两种传输方式，具体创建逻辑由 transportType 决定。</p>
      *
-     * @param mcp MCP瀹搞儱鍙块柊宥囩枂鐎圭偘缍?
-     * @return 閸掓繂顫愰崠鏍х暚閹存劗娈慚CP閸氬本顒炵€广垺鍩涚粩?
+     * @param mcp MCP 工具配置
+     * @return 已初始化的 MCP 同步客户端
      */
     private McpSyncClient createMcpClient(AiClientToolMcp mcp) {
         TransportTypeEnum transportType = TransportTypeEnum.of(mcp.getTransportType());
@@ -408,12 +408,13 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 閸掓稑缂揝SE娴肩姾绶惃鍑狢P鐎广垺鍩涚粩顖樷偓?
-     * <p>娴犲窐ransportConfig JSON娑擃叀袙閺嬫亣aseUri閸滃seEndpoint, 閺嬪嫬缂揌ttpClientSseClientTransport閵?/p>
+     * 创建基于 SSE 传输的 MCP 同步客户端。
+     * <p>从 transportConfig JSON 中解析 baseUri 与 sseEndpoint，
+     * 再构建 {@link HttpClientSseClientTransport}。</p>
      *
-     * @param transportConfig 娴肩姾绶柊宥囩枂JSON鐎涙顑佹稉? 閸栧懎鎯坆aseUri閸滃苯褰查柅澶屾畱sseEndpoint
-     * @param timeout         鐠囬攱鐪扮搾鍛閺冨爼妫?
-     * @return 閸掓繂顫愰崠鏍х暚閹存劗娈慚CP閸氬本顒炵€广垺鍩涚粩?
+     * @param transportConfig SSE 传输配置 JSON
+     * @param timeout 请求超时时间
+     * @return 已初始化的 MCP 同步客户端
      */
     private McpSyncClient createSseMcpClient(String transportConfig, Duration timeout) {
         var config = mcpTransportConfigParser.parseSse(transportConfig);
@@ -431,16 +432,17 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
         client.initialize();
         return client;
     }
-
     /**
-     * 閸掓稑缂揝tdio娴肩姾绶惃鍑狢P鐎广垺鍩涚粩顖樷偓?
-     * <p>娴犲窐ransportConfig JSON娑擃叀袙閺嬫亪ommand閸滃畮rgs, 閺嬪嫬缂揝tdioClientTransport閵?
-     * 闁板秶鐤嗛弽鐓庣础: {"toolName": {"command": "npx", "args": [...]}}</p>
+     * 创建基于 stdio 传输的 MCP 同步客户端。
+     * <p>从 transportConfig JSON 中解析 command 与 args，
+     * 再构建 {@link StdioClientTransport}。
+     * 配置示例：{"toolName": {"command": "npx", "args": [...]}}</p>
      *
-     * @param transportConfig 娴肩姾绶柊宥囩枂JSON鐎涙顑佹稉? 閸栧懎鎯堥崨鎴掓姢閸滃苯寮弫?
-     * @param timeout         鐠囬攱鐪扮搾鍛閺冨爼妫?
-     * @return 閸掓繂顫愰崠鏍х暚閹存劗娈慚CP閸氬本顒炵€广垺鍩涚粩?
+     * @param transportConfig stdio 传输配置 JSON
+     * @param timeout 请求超时时间
+     * @return 已初始化的 MCP 同步客户端
      */
+
     private McpSyncClient createStdioMcpClient(String transportConfig, Duration timeout) {
         ServerParameters params = mcpTransportConfigParser.toServerParameters(
                 mcpTransportConfigParser.parseStdio(transportConfig));
@@ -465,12 +467,12 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 閺嶈宓侀柊宥囩枂閺嬪嫬缂揂dvisor闁炬拝绱機hatMemory/RAG/Logger閿涘鈧?
-     * <p>闁秴宸籄dvisor闁板秶鐤嗛崚妤勩€? 娑撶儤鐦℃稉顏堝帳缂冾喖鍨卞鍝勵嚠鎼存梻琚崹瀣畱Advisor鐎圭偘绶?
-     * 楠炶泛婀張顐㈢啲婵绮撴潻钘夊 {@link SimpleLoggerAdvisor} 閻劋绨弮銉ョ箶鐠佹澘缍嶉妴?/p>
+     * 根据配置创建 Advisor 列表，并追加默认日志 Advisor。
+     * <p>当前支持 ChatMemory 与 RAG Advisor；无论是否配置，都会附加
+     * {@link SimpleLoggerAdvisor} 以便输出调用日志。</p>
      *
-     * @param advisorConfigs Advisor闁板秶鐤嗛崚妤勩€?
-     * @return 閺嬪嫬缂撶€瑰本鍨氶惃鍑檇visor閸掓銆?
+     * @param advisorConfigs Advisor 配置列表
+     * @return 已创建的 Advisor 列表
      */
     private List<Advisor> buildAdvisors(List<AiClientAdvisor> advisorConfigs) {
         List<Advisor> advisors = new ArrayList<>();
@@ -490,15 +492,15 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     /**
-     * 閺嶈宓侀柊宥囩枂閸掓稑缂撻崡鏇氶嚋Advisor鐎圭偘绶ラ妴?
-     * <p>閺€顖涘瘮閻ㄥ嚈dvisor缁鐎?
+     * 根据单条配置创建具体的 Advisor 实例。
+     * <p>当前支持：
      * <ul>
-     *   <li>{@code CHAT_MEMORY} - 鐎电鐦界拋鏉跨箓Advisor, 閸╄桨绨☉鍫熶紖缁愭褰涙穱婵囧瘮娑撳﹣绗呴弬?/li>
-     *   <li>{@code RAG_ANSWER} - RAG濡偓缁便垹顤冨绡坉visor, 娴犲骸鎮滈柌蹇撶氨濡偓缁便垻娴夐崗铏瀮濡楋絾鏁為崗銉ょ瑐娑撳鏋?/li>
+     *   <li>{@code CHAT_MEMORY}：基于消息窗口的会话记忆 Advisor；</li>
+     *   <li>{@code RAG_ANSWER}：基于向量检索的 RAG 上下文增强 Advisor。</li>
      * </ul></p>
      *
-     * @param config Advisor闁板秶鐤嗙€圭偘缍? 閸栧懎鎯堢猾璇茬€烽崪灞惧⒖鐏炴洖寮弫?
-     * @return 閸掓稑缂撻惃鍑檇visor鐎圭偘绶?
+     * @param config Advisor 配置
+     * @return 创建好的 Advisor 实例
      */
     private Advisor createAdvisor(AiClientAdvisor config) {
         AdvisorTypeEnum type = AdvisorTypeEnum.of(config.getAdvisorType());
