@@ -1,6 +1,9 @@
 package io.wanjune.zagent.service;
 
+import io.wanjune.zagent.model.dto.McpRuntimeState;
 import org.springframework.ai.chat.client.ChatClient;
+
+import java.util.Map;
 
 /**
  * AI客户端动态装配服务接口, 是整个系统的核心, 负责从数据库配置动态构建Spring AI ChatClient。
@@ -30,5 +33,7 @@ public interface AiClientAssemblyService {
      * <p>在应用启动后调用, 避免首次请求时的延迟。</p>
      */
     void warmUpAll();
+
+    Map<String, McpRuntimeState> getMcpRuntimeStates();
 
 }

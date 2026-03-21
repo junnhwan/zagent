@@ -2139,6 +2139,7 @@ function ensureMcpModePanel() {
         <button class="admin-btn" onclick="applyMcpMode(this)">Apply MCP</button>
       </div>
     </div>
+    <div id="mcpRuntimeList" style="margin-top:12px;display:grid;gap:10px;"></div>
   `;
 
   const table = section.querySelector('table');
@@ -2161,6 +2162,7 @@ async function loadMcpModeState() {
 function renderMcpModeState(data) {
   const select = document.getElementById('mcpModeSelect');
   const hint = document.getElementById('mcpModeHint');
+  const runtimeList = document.getElementById('mcpRuntimeList');
   if (!select || !hint || !data) return;
 
   const options = data.options || [];
@@ -2174,6 +2176,35 @@ function renderMcpModeState(data) {
   hint.textContent = current
     ? `Current: ${current.label} | model=${current.modelId} | clients=${(data.managedClientIds || []).join(', ')}`
     : `Current model=${data.currentModelId || 'unknown'} | clients=${(data.managedClientIds || []).join(', ')}`;
+
+  const activeMcps = data.activeMcps || [];
+  if (runtimeList) {
+    if (!activeMcps.length) {
+      runtimeList.innerHTML = '<div style="font-size:12px;color:var(--text-secondary);padding:10px 12px;border:1px dashed var(--panel-border);border-radius:8px;">No active MCP tools for current mode.</div>';
+    } else {
+      runtimeList.innerHTML = activeMcps.map(item => {
+        const readyColor = item.ready ? 'var(--success)' : 'var(--warning)';
+        const readyText = item.ready ? 'READY' : 'PENDING/ERROR';
+        const updatedAt = item.updatedAt ? new Date(item.updatedAt).toLocaleString() : 'n/a';
+        const lastError = item.lastError ? escapeHtml(item.lastError) : 'none';
+        return `
+          <div style="border:1px solid var(--panel-border);border-radius:10px;background:var(--surface);padding:12px 14px;">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+              <div style="font-weight:700;">${escapeHtml(item.mcpName || item.mcpId)}</div>
+              <div style="font-size:11px;font-family:var(--font-mono);color:${readyColor};">${readyText}</div>
+            </div>
+            <div style="margin-top:8px;font-size:12px;color:var(--text-secondary);display:grid;gap:4px;">
+              <div><span style="color:var(--text-muted);">mcpId</span> = ${escapeHtml(item.mcpId || '')}</div>
+              <div><span style="color:var(--text-muted);">transport</span> = ${escapeHtml(item.transportType || '')}</div>
+              <div><span style="color:var(--text-muted);">target</span> = ${escapeHtml(item.transportSummary || '')}</div>
+              <div><span style="color:var(--text-muted);">last update</span> = ${escapeHtml(updatedAt)}</div>
+              <div><span style="color:var(--text-muted);">last error</span> = ${lastError}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
 }
 
 async function applyMcpMode(btn) {

@@ -10,6 +10,7 @@ import io.modelcontextprotocol.client.transport.StdioClientTransport;
 import io.wanjune.zagent.advisor.RagContextAdvisor;
 import io.wanjune.zagent.common.Constants;
 import io.wanjune.zagent.mapper.*;
+import io.wanjune.zagent.model.dto.McpRuntimeState;
 import io.wanjune.zagent.model.entity.*;
 import io.wanjune.zagent.model.enums.AdvisorTypeEnum;
 import io.wanjune.zagent.model.enums.TransportTypeEnum;
@@ -36,6 +37,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -53,6 +55,7 @@ import java.util.stream.Collectors;
 public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org.springframework.beans.factory.DisposableBean {
 
     private final ConcurrentHashMap<String, ChatClient> clientCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, McpRuntimeState> mcpRuntimeStates = new ConcurrentHashMap<>();
     /** MCP鐎广垺鍩涚粩顖濈カ濠ф劖鐫? 閻劋绨崗鎶芥４閺冭埖绔婚悶?*/
     private final List<McpSyncClient> mcpClientPool = Collections.synchronizedList(new ArrayList<>());
 
@@ -152,6 +155,11 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
         } catch (Exception e) {
             log.warn("ChatClient warm-up aborted: {}", e.getMessage());
         }
+    }
+
+    @Override
+    public Map<String, McpRuntimeState> getMcpRuntimeStates() {
+        return Collections.unmodifiableMap(mcpRuntimeStates);
     }
 
     /**
@@ -281,8 +289,10 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
                 McpSyncClient mcpClient = createMcpClient(mcp);
                 mcpClients.add(mcpClient);
                 mcpClientPool.add(mcpClient); // 閸旂姴鍙嗙挧鍕爱濮? 閸忔娊妫撮弮鍓佺埠娑撯偓濞撳懐鎮?
+                mcpRuntimeStates.put(mcp.getMcpId(), new McpRuntimeState(true, null, Instant.now()));
                 log.info("MCP client initialized: {} ({})", mcp.getMcpName(), mcp.getTransportType());
             } catch (Exception e) {
+                mcpRuntimeStates.put(mcp.getMcpId(), new McpRuntimeState(false, e.getMessage(), Instant.now()));
                 log.error("Failed to create MCP client: {} - {}", mcp.getMcpName(), e.getMessage());
             }
         }

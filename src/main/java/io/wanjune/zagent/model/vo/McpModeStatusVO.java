@@ -21,6 +21,8 @@ public class McpModeStatusVO {
 
     private List<McpModeOptionVO> options;
 
+    private List<McpRuntimeStatusVO> activeMcps;
+
     @Data
     @Builder
     @NoArgsConstructor
