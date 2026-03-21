@@ -87,7 +87,7 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     @Override
     public void invalidate(String clientId) {
         clientCache.remove(clientId);
-        log.info("ChatClient缂傛挸鐡ㄥ鎻掋亼閺? {}", clientId);
+        log.info("ChatClient cache invalidated for clientId: {}", clientId);
     }
 
     /**
@@ -95,12 +95,12 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
      */
     @Override
     public void destroy() {
-        log.info("濮濓絽婀崗鎶芥４{}娑撶嫻CP鐎广垺鍩涚粩?..", mcpClientPool.size());
+        log.info("Closing {} MCP clients before shutdown", mcpClientPool.size());
         for (McpSyncClient client : mcpClientPool) {
             try {
                 client.close();
             } catch (Exception e) {
-                log.warn("閸忔娊妫碝CP鐎广垺鍩涚粩顖氥亼鐠? {}", e.getMessage());
+                log.warn("Failed to close MCP client cleanly: {}", e.getMessage());
             }
         }
         mcpClientPool.clear();
@@ -119,14 +119,14 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
                 Thread.sleep(3000); // 缁涘绶熼崗鏈电铂Bean閸掓繂顫愰崠鏍х暚閹?
                 warmUpAll();
             } catch (Exception e) {
-                log.warn("閸氼垰濮╂０鍕劰婢惰精瑙? 鐏忓棗婀＃鏍偧鐠囬攱鐪伴弮鑸电€? {}", e.getMessage());
+                log.warn("Failed to load MCP sync config during startup warm-up: {}", e.getMessage());
             }
         });
     }
 
     @Override
     public void warmUpAll() {
-        log.info("瀵偓婵顣╅悜鐟縣atClient...");
+        log.info("Starting ChatClient warm-up...");
         try {
             // 閼惧嘲褰囬幍鈧張濉卨owConfig娑擃厼绱╅悽銊ф畱clientId閿涘牆骞撻柌宥忕礆
             List<AiAgentFlowConfig> allFlowConfigs = aiAgentFlowConfigMapper.selectAll();
@@ -141,12 +141,12 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
                     getOrBuildChatClient(clientId);
                     success++;
                 } catch (Exception e) {
-                    log.warn("妫板嫮鍎筩lientId={}婢惰精瑙? {}", clientId, e.getMessage());
+                    log.warn("Warm-up failed for clientId={}: {}", clientId, e.getMessage());
                 }
             }
-            log.info("妫板嫮鍎圭€瑰本鍨? {}/{} 娑撶嫝hatClient閺嬪嫬缂撻幋鎰", success, clientIds.size());
+            log.info("Warm-up finished: {}/{} ChatClients built successfully", success, clientIds.size());
         } catch (Exception e) {
-            log.warn("妫板嫮鍎规潻鍥┾柤瀵倸鐖? {}", e.getMessage());
+            log.warn("ChatClient warm-up aborted: {}", e.getMessage());
         }
     }
 

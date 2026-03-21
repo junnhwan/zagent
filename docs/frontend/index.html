@@ -1825,6 +1825,7 @@ async function sendRag() {
    ═══════════════════════════════════════════ */
 let adminAgentsCache = [];
 let adminClientsCache = [];
+let mcpConfigCache = null;
 
 function switchAdminTab(tab, btn) {
   document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
@@ -1833,7 +1834,7 @@ function switchAdminTab(tab, btn) {
   document.getElementById('admin' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
   if (tab === 'agents') loadAdminAgents();
   if (tab === 'flows') { loadFlowAgentSelect(); }
-  if (tab === 'clients') loadAdminClients();
+  if (tab === 'clients') { loadAdminClients(); loadMcpModeState(); }
 }
 
 // ── Agent CRUD ──
@@ -2095,6 +2096,7 @@ async function deleteFlow(flowId) {
 // ── Client List ──
 async function loadAdminClients() {
   try {
+    ensureMcpModePanel();
     const res = await fetch(`${API_BASE}/api/admin/clients`);
     const json = await res.json();
     adminClientsCache = json.data || [];
@@ -2117,6 +2119,90 @@ async function loadAdminClients() {
 /* ═══════════════════════════════════════════
    INIT
    ═══════════════════════════════════════════ */
+
+
+function ensureMcpModePanel() {
+  const section = document.getElementById('adminClients');
+  if (!section || document.getElementById('mcpModePanel')) return;
+
+  const panel = document.createElement('div');
+  panel.id = 'mcpModePanel';
+  panel.style.cssText = 'margin-bottom:16px;padding:14px 16px;border:1px solid var(--panel-border);border-radius:10px;background:var(--panel);box-shadow:0 4px 18px rgba(0,0,0,0.04);';
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div style="font-weight:700;font-size:14px;margin-bottom:6px;">MCP Test Mode</div>
+        <div id="mcpModeHint" style="font-size:12px;color:var(--text-secondary);">Load current MCP binding...</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <select id="mcpModeSelect" style="padding:8px 12px;border:1px solid var(--panel-border);border-radius:8px;background:var(--surface);color:var(--text-primary);min-width:200px;"></select>
+        <button class="admin-btn" onclick="applyMcpMode(this)">Apply MCP</button>
+      </div>
+    </div>
+  `;
+
+  const table = section.querySelector('table');
+  section.insertBefore(panel, table);
+}
+
+async function loadMcpModeState() {
+  try {
+    ensureMcpModePanel();
+    const res = await fetch(`${API_BASE}/api/admin/mcp-config/current`);
+    const json = await res.json();
+    if (json.code !== '0000') return showToast(json.info || 'Load MCP config failed', 'error');
+    mcpConfigCache = json.data;
+    renderMcpModeState(json.data);
+  } catch (e) {
+    showToast('?? MCP ????: ' + e.message, 'error');
+  }
+}
+
+function renderMcpModeState(data) {
+  const select = document.getElementById('mcpModeSelect');
+  const hint = document.getElementById('mcpModeHint');
+  if (!select || !hint || !data) return;
+
+  const options = data.options || [];
+  select.innerHTML = options.map(item => `
+    <option value="${escapeHtml(item.mode)}" ${item.mode === data.currentMode ? 'selected' : ''}>
+      ${escapeHtml(item.label)} (${escapeHtml(item.modelId)})
+    </option>
+  `).join('');
+
+  const current = options.find(item => item.mode === data.currentMode);
+  hint.textContent = current
+    ? `Current: ${current.label} | model=${current.modelId} | clients=${(data.managedClientIds || []).join(', ')}`
+    : `Current model=${data.currentModelId || 'unknown'} | clients=${(data.managedClientIds || []).join(', ')}`;
+}
+
+async function applyMcpMode(btn) {
+  const select = document.getElementById('mcpModeSelect');
+  if (!select || !select.value) return showToast('??? MCP ??', 'error');
+
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Applying...';
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/mcp-config/switch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: select.value })
+    });
+    const json = await res.json();
+    if (json.code !== '0000') return showToast(json.info || 'Switch MCP failed', 'error');
+
+    mcpConfigCache = json.data;
+    renderMcpModeState(json.data);
+    showToast(`MCP switched to ${select.value}`, 'success');
+  } catch (e) {
+    showToast('?? MCP ??: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
 // Preload RAG tags if starting on RAG panel
 document.addEventListener('DOMContentLoaded', () => {
   // Auto-detect if marked.js loaded

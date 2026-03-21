@@ -16,7 +16,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StreamUtils;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -79,6 +83,12 @@ public class McpConfigSyncServiceImpl implements McpConfigSyncService {
         log.debug("MCP JSON sync already completed, skipping repeat sync");
     }
 
+    @Override
+    public void forceSync() {
+        syncNow();
+        synced.set(true);
+    }
+
     void syncNow() {
         McpSyncManifest manifest = loadManifest();
         syncModels(manifest.getModels());
@@ -92,18 +102,52 @@ public class McpConfigSyncServiceImpl implements McpConfigSyncService {
 
     McpSyncManifest loadManifest() {
         try {
-            Resource resource = ResourcePatternUtils.getResourcePatternResolver(resourceLoader).getResource(configLocation);
-            if (!resource.exists()) {
-                throw new IllegalStateException("MCP sync config not found: " + configLocation);
-            }
-            String rawJson = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
-            String resolvedJson = environment.resolvePlaceholders(rawJson);
+            String rawJson = readRawConfig();
+            String resolvedJson = environment.resolvePlaceholders(stripUtf8Bom(rawJson));
             McpSyncManifest manifest = objectMapper.readValue(resolvedJson, McpSyncManifest.class);
             validateManifest(manifest);
             return manifest;
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load MCP sync config: " + configLocation, e);
         }
+    }
+
+    private String readRawConfig() throws IOException {
+        Path writablePath = resolveWritableConfigPath();
+        if (writablePath != null && Files.exists(writablePath)) {
+            return Files.readString(writablePath, StandardCharsets.UTF_8);
+        }
+
+        Resource resource = ResourcePatternUtils.getResourcePatternResolver(resourceLoader).getResource(configLocation);
+        if (!resource.exists()) {
+            throw new IllegalStateException("MCP sync config not found: " + configLocation);
+        }
+        return StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
+    }
+
+    private Path resolveWritableConfigPath() {
+        try {
+            if (StringUtils.startsWith(configLocation, "file:")) {
+                return Paths.get(URI.create(configLocation));
+            }
+            if (StringUtils.startsWith(configLocation, "classpath:")) {
+                String relativePath = StringUtils.removeStart(configLocation, "classpath:");
+                Path sourcePath = Paths.get("src", "main", "resources", relativePath);
+                if (Files.exists(sourcePath)) {
+                    return sourcePath;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to resolve writable MCP config path: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    private String stripUtf8Bom(String content) {
+        if (content != null && !content.isEmpty() && content.charAt(0) == '\uFEFF') {
+            return content.substring(1);
+        }
+        return content;
     }
 
     private void syncModels(List<McpSyncManifest.ModelConfig> models) {

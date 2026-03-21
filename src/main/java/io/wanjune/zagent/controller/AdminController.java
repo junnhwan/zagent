@@ -1,12 +1,15 @@
 package io.wanjune.zagent.controller;
 
 import io.wanjune.zagent.common.Result;
+import io.wanjune.zagent.model.dto.McpModeSwitchRequest;
 import io.wanjune.zagent.mapper.AiAgentFlowConfigMapper;
 import io.wanjune.zagent.mapper.AiAgentMapper;
 import io.wanjune.zagent.mapper.AiClientMapper;
 import io.wanjune.zagent.model.entity.AiAgent;
 import io.wanjune.zagent.model.entity.AiAgentFlowConfig;
 import io.wanjune.zagent.model.entity.AiClient;
+import io.wanjune.zagent.model.vo.McpModeStatusVO;
+import io.wanjune.zagent.service.McpModeAdminService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -30,6 +33,8 @@ public class AdminController {
     private AiAgentFlowConfigMapper aiAgentFlowConfigMapper;
     @Resource
     private AiClientMapper aiClientMapper;
+    @Resource
+    private McpModeAdminService mcpModeAdminService;
 
     // ==================== Agent CRUD ====================
 
@@ -120,6 +125,19 @@ public class AdminController {
     @GetMapping("/clients")
     public Result<List<AiClient>> listClients() {
         return Result.success(aiClientMapper.selectAll());
+    }
+
+    @GetMapping("/mcp-config/current")
+    public Result<McpModeStatusVO> currentMcpConfig() {
+        return Result.success(mcpModeAdminService.getCurrentStatus());
+    }
+
+    @PostMapping("/mcp-config/switch")
+    public Result<McpModeStatusVO> switchMcpConfig(@RequestBody McpModeSwitchRequest request) {
+        if (request == null || request.getMode() == null || request.getMode().isBlank()) {
+            return Result.fail("mode 不能为空");
+        }
+        return Result.success(mcpModeAdminService.switchMode(request.getMode()));
     }
 
 }

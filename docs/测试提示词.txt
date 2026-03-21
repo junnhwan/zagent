@@ -19,7 +19,7 @@ Agent ID 填不存在的值，比如 999
 
 ---
 id3，flow
-
+SSE启动：python tools/amap_sse_mcp.py
 mcp-test SSE & STDIO
 
 STDIO
