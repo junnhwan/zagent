@@ -30,6 +30,7 @@ public class FixedExecuteStrategy implements IExecuteStrategy {
         Map<String, String> clientTypeMap = context.getClientTypeMap();
         String currentInput = context.getUserInput();
         String lastOutput = currentInput;
+        int totalSteps = clientTypeMap.size();
 
         // 按clientType遍历（fixed策略所有type都是default, 直接顺序执行）
         int step = 0;
@@ -38,6 +39,7 @@ public class FixedExecuteStrategy implements IExecuteStrategy {
             String clientId = entry.getValue();
             log.info("Fixed策略 - 步骤{}: clientId={}", step, clientId);
 
+            sendStageEvent(emitter, "execution", "active", step, totalSteps, null, context.getConversationId());
             ChatClient chatClient = aiClientAssemblyService.getOrBuildChatClient(clientId);
             lastOutput = chatClient.prompt(currentInput)
                     .system(s -> s.param("current_date", LocalDate.now().toString()))
@@ -48,22 +50,23 @@ public class FixedExecuteStrategy implements IExecuteStrategy {
                     .content();
 
             // 推送SSE事件
-            sendStageEvent(emitter, "execution", step, lastOutput, context.getConversationId());
+            sendStageEvent(emitter, "execution", "done", step, totalSteps, lastOutput, context.getConversationId());
 
             // 本步输出作为下一步输入
             currentInput = lastOutput;
             log.info("Fixed策略 - 步骤{}完成, 输出长度: {}", step, lastOutput != null ? lastOutput.length() : 0);
         }
 
-        sendStageEvent(emitter, "complete", 0, "执行完成", context.getConversationId());
+        sendStageEvent(emitter, "complete", "done", 0, totalSteps, "执行完成", context.getConversationId());
         return lastOutput;
     }
 
-    private void sendStageEvent(SseEmitter emitter, String stage, int step, String content, String sessionId) {
+    private void sendStageEvent(SseEmitter emitter, String stage, String status, int step, int totalSteps, String content, String sessionId) {
         if (emitter == null) return;
         try {
             StageEvent event = StageEvent.builder()
-                    .stage(stage).step(step).content(content).sessionId(sessionId).build();
+                    .stage(stage).status(status).step(step).totalSteps(totalSteps)
+                    .content(content).sessionId(sessionId).build();
             emitter.send(SseEmitter.event().data(com.alibaba.fastjson.JSON.toJSONString(event)));
         } catch (Exception e) {
             log.error("发送SSE事件失败", e);

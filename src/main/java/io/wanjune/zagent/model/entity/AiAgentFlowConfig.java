@@ -20,6 +20,8 @@ public class AiAgentFlowConfig {
     private String clientType;
     /** 序列号（执行顺序，从小到大） */
     private Integer sequence;
+    /** 步骤提示词模板（支持%s格式化参数，JSON格式可存多变体） */
+    private String stepPrompt;
     /** 创建时间 */
     private Date createTime;
 }

@@ -32,9 +32,9 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
     @Resource
     private AiClientAssemblyService aiClientAssemblyService;
 
-    // ==================== 提示词模板（参考ai-agent-station-study） ====================
+    // ==================== 默认提示词模板（DB未配置时的降级方案） ====================
 
-    private static final String MCP_ANALYSIS_PROMPT = """
+    private static final String DEFAULT_MCP_ANALYSIS_PROMPT = """
             # MCP工具能力分析任务
 
             ## 重要说明
@@ -75,7 +75,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
             请确保分析结果准确、详细、可操作，并再次强调这仅是分析阶段。
             """;
 
-    private static final String PLANNING_PROMPT = """
+    private static final String DEFAULT_PLANNING_PROMPT = """
             # 智能执行计划生成
 
             ## 用户需求分析
@@ -128,7 +128,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
             现在请开始生成执行步骤规划：
             """;
 
-    private static final String STEP_EXECUTION_PROMPT = """
+    private static final String DEFAULT_STEP_EXECUTION_PROMPT = """
             你是一个智能执行助手，需要执行以下步骤:
 
             **步骤内容:**
@@ -164,7 +164,13 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
     @Override
     public String execute(ExecuteContext context, SseEmitter emitter) throws Exception {
         Map<String, String> clientTypeMap = context.getClientTypeMap();
+        Map<String, String> stepPromptMap = context.getStepPromptMap();
         String userInput = context.getUserInput();
+
+        // 从DB加载提示词, 无则使用默认值
+        String mcpAnalysisPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.TOOL_MCP.getCode(), DEFAULT_MCP_ANALYSIS_PROMPT);
+        String planningPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.PLANNING.getCode(), DEFAULT_PLANNING_PROMPT);
+        String stepExecutionPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.EXECUTOR.getCode(), DEFAULT_STEP_EXECUTION_PROMPT);
 
         // === 阶段1: MCP工具分析 ===
         String toolAnalysis = "";
@@ -172,9 +178,10 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         if (mcpClientId != null) {
             log.info("Flow策略 - 开始MCP工具分析");
             ChatClient mcpClient = aiClientAssemblyService.getOrBuildChatClient(mcpClientId);
-            String prompt = String.format(MCP_ANALYSIS_PROMPT, userInput);
+            String prompt = String.format(mcpAnalysisPrompt, userInput);
+            sendStageEvent(emitter, "tool_analysis", "active", 1, 0, null, context.getConversationId());
             toolAnalysis = callClient(mcpClient, prompt, context.getConversationId());
-            sendStageEvent(emitter, "tool_analysis", 1, toolAnalysis, context.getConversationId());
+            sendStageEvent(emitter, "tool_analysis", "done", 1, 0, toolAnalysis, context.getConversationId());
             log.info("Flow策略 - 工具分析完成");
         }
 
@@ -184,9 +191,10 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         if (planningClientId != null) {
             log.info("Flow策略 - 开始制定执行计划");
             ChatClient planningClient = aiClientAssemblyService.getOrBuildChatClient(planningClientId);
-            String prompt = String.format(PLANNING_PROMPT, userInput, toolAnalysis);
+            String prompt = String.format(planningPrompt, userInput, toolAnalysis);
+            sendStageEvent(emitter, "planning", "active", 2, 0, null, context.getConversationId());
             planResult = callClient(planningClient, prompt, context.getConversationId());
-            sendStageEvent(emitter, "planning", 2, planResult, context.getConversationId());
+            sendStageEvent(emitter, "planning", "done", 2, 0, planResult, context.getConversationId());
             log.info("Flow策略 - 规划完成");
         }
 
@@ -200,7 +208,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         // === 阶段4: 逐步执行 ===
         String executorClientId = clientTypeMap.get(ClientTypeEnum.EXECUTOR.getCode());
         if (executorClientId == null) {
-            sendStageEvent(emitter, "complete", 0, "无执行客户端，返回计划", context.getConversationId());
+            sendStageEvent(emitter, "complete", "done", 0, 0, "无执行客户端，返回计划", context.getConversationId());
             return planResult;
         }
 
@@ -208,26 +216,28 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         StringBuilder allResults = new StringBuilder();
         List<Integer> sortedSteps = new ArrayList<>(stepsMap.keySet());
         Collections.sort(sortedSteps);
+        int totalExecSteps = sortedSteps.size();
 
         for (int stepNum : sortedSteps) {
             String stepContent = stepsMap.get(stepNum);
             log.info("Flow策略 - 执行第{}步", stepNum);
 
             String previousResults = allResults.isEmpty() ? "" : "**前序步骤执行结果:**\n" + allResults;
-            String prompt = String.format(STEP_EXECUTION_PROMPT, stepContent, userInput, previousResults);
+            String prompt = String.format(stepExecutionPrompt, stepContent, userInput, previousResults);
 
+            sendStageEvent(emitter, "step_execution", "active", stepNum, totalExecSteps, null, context.getConversationId());
             try {
                 String stepResult = callClient(executorClient, prompt, context.getConversationId());
                 allResults.append(String.format("=== 第%d步结果 ===\n%s\n\n", stepNum, stepResult));
                 String sseContent = stepResult.length() > 500
                         ? stepResult.substring(0, 500) + "...(已截断)"
                         : stepResult;
-                sendStageEvent(emitter, "step_execution", stepNum, sseContent, context.getConversationId());
+                sendStageEvent(emitter, "step_execution", "done", stepNum, totalExecSteps, sseContent, context.getConversationId());
                 log.info("Flow策略 - 第{}步执行成功", stepNum);
             } catch (Exception e) {
                 String errorMsg = String.format("第%d步执行失败: %s", stepNum, e.getMessage());
                 allResults.append(errorMsg).append("\n\n");
-                sendStageEvent(emitter, "step_execution", stepNum, errorMsg, context.getConversationId());
+                sendStageEvent(emitter, "step_execution", "error", stepNum, totalExecSteps, errorMsg, context.getConversationId());
                 log.error("Flow策略 - 第{}步执行失败", stepNum, e);
             }
 
@@ -236,9 +246,18 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         }
 
         String finalOutput = allResults.toString();
-        sendStageEvent(emitter, "summary", 0, finalOutput, context.getConversationId());
-        sendStageEvent(emitter, "complete", 0, "执行完成", context.getConversationId());
+        sendStageEvent(emitter, "summary", "done", 0, totalExecSteps, finalOutput, context.getConversationId());
+        sendStageEvent(emitter, "complete", "done", 0, totalExecSteps, "执行完成", context.getConversationId());
         return finalOutput;
+    }
+
+    /**
+     * 从stepPromptMap获取指定角色的提示词, DB未配置时返回默认值
+     */
+    private String getStepPrompt(Map<String, String> stepPromptMap, String clientType, String defaultPrompt) {
+        if (stepPromptMap == null) return defaultPrompt;
+        String dbPrompt = stepPromptMap.get(clientType);
+        return (dbPrompt != null && !dbPrompt.isBlank()) ? dbPrompt : defaultPrompt;
     }
 
     /**
@@ -286,11 +305,12 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
                 .content();
     }
 
-    private void sendStageEvent(SseEmitter emitter, String stage, int step, String content, String sessionId) {
+    private void sendStageEvent(SseEmitter emitter, String stage, String status, int step, int totalSteps, String content, String sessionId) {
         if (emitter == null) return;
         try {
             StageEvent event = StageEvent.builder()
-                    .stage(stage).step(step).content(content).sessionId(sessionId).build();
+                    .stage(stage).status(status).step(step).totalSteps(totalSteps)
+                    .content(content).sessionId(sessionId).build();
             emitter.send(SseEmitter.event().data(com.alibaba.fastjson.JSON.toJSONString(event)));
         } catch (Exception e) {
             log.error("发送SSE事件失败", e);

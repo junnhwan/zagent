@@ -1,5 +1,6 @@
 package io.wanjune.zagent.advisor;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.api.AdvisorChain;
@@ -20,6 +21,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * RAG上下文注入Advisor, 实现Spring AI的BaseAdvisor接口,
@@ -28,6 +30,7 @@ import java.util.stream.Collectors;
  *
  * @author zagent
  */
+@Slf4j
 public class RagContextAdvisor implements BaseAdvisor {
 
     private static final String USER_TEXT_ADVISE = """
@@ -45,6 +48,8 @@ public class RagContextAdvisor implements BaseAdvisor {
 
     private static final String RETRIEVED_DOCUMENTS_KEY = "qa_retrieved_documents";
     private static final String FILTER_EXPRESSION_KEY = "qa_filter_expression";
+    private static final int QUERY_PREVIEW_LIMIT = 80;
+    private static final int DOCUMENT_PREVIEW_LIMIT = 80;
 
     private final VectorStore vectorStore;
     private final SearchRequest searchRequest;
@@ -60,15 +65,27 @@ public class RagContextAdvisor implements BaseAdvisor {
 
         // 1. 获取用户原始问题
         String userText = request.prompt().getUserMessage().getText();
+        String filterExpressionText = resolveFilterExpressionText(context);
 
         // 2. 向量检索
+        long startAt = System.currentTimeMillis();
         SearchRequest searchRequestToUse = SearchRequest.from(this.searchRequest)
                 .query(userText)
                 .filterExpression(resolveFilterExpression(context))
                 .build();
 
         List<Document> documents = vectorStore.similaritySearch(searchRequestToUse);
+        long costMs = System.currentTimeMillis() - startAt;
         context.put(RETRIEVED_DOCUMENTS_KEY, documents);
+
+        log.info("RAG检索完成: query='{}', filter='{}', hits={}, topK={}, threshold={}, costMs={}, docs=[{}]",
+                abbreviate(userText, QUERY_PREVIEW_LIMIT),
+                filterExpressionText,
+                documents.size(),
+                searchRequestToUse.getTopK(),
+                searchRequestToUse.getSimilarityThreshold(),
+                costMs,
+                summarizeDocuments(documents));
 
         // 3. 拼接检索到的文档内容
         String documentContext = documents.stream()
@@ -134,6 +151,47 @@ public class RagContextAdvisor implements BaseAdvisor {
             return new FilterExpressionTextParser().parse(String.valueOf(context.get(FILTER_EXPRESSION_KEY)));
         }
         return this.searchRequest.getFilterExpression();
+    }
+
+    private String resolveFilterExpressionText(Map<String, Object> context) {
+        if (context.containsKey(FILTER_EXPRESSION_KEY)
+                && StringUtils.hasText(String.valueOf(context.get(FILTER_EXPRESSION_KEY)))) {
+            return String.valueOf(context.get(FILTER_EXPRESSION_KEY));
+        }
+        return this.searchRequest.hasFilterExpression() ? String.valueOf(this.searchRequest.getFilterExpression()) : "<none>";
+    }
+
+    static String summarizeDocuments(List<Document> documents) {
+        if (documents == null || documents.isEmpty()) {
+            return "hits=0";
+        }
+        return IntStream.range(0, documents.size())
+                .mapToObj(index -> {
+                    Document document = documents.get(index);
+                    String source = metadataValue(document, "source");
+                    String knowledge = metadataValue(document, "knowledge");
+                    return "#" + (index + 1) + "{source=" + source
+                            + ", knowledge=" + knowledge
+                            + ", preview=" + abbreviate(document.getText(), DOCUMENT_PREVIEW_LIMIT)
+                            + "}";
+                })
+                .collect(Collectors.joining(", "));
+    }
+
+    private static String metadataValue(Document document, String key) {
+        Object value = document.getMetadata().get(key);
+        return value == null ? "<none>" : String.valueOf(value);
+    }
+
+    private static String abbreviate(String text, int maxLength) {
+        if (!StringUtils.hasText(text)) {
+            return "<empty>";
+        }
+        String normalized = text.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= maxLength) {
+            return normalized;
+        }
+        return normalized.substring(0, maxLength) + "...";
     }
 
 }

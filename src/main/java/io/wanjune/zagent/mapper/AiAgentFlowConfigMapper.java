@@ -11,17 +11,16 @@ import java.util.List;
 @Mapper
 public interface AiAgentFlowConfigMapper {
 
-    /**
-     * 根据智能体ID查询执行流程（按sequence升序）
-     *
-     * @param agentId 智能体ID
-     * @return 按sequence升序排列的流程配置列表
-     */
     List<AiAgentFlowConfig> selectByAgentId(@Param("agentId") String agentId);
 
-    /**
-     * 查询所有流程配置（预热用）
-     */
     List<AiAgentFlowConfig> selectAll();
+
+    int insert(AiAgentFlowConfig config);
+
+    int update(AiAgentFlowConfig config);
+
+    int deleteById(@Param("id") Long id);
+
+    int deleteByAgentId(@Param("agentId") String agentId);
 
 }

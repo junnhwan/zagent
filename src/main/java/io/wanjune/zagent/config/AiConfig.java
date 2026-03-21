@@ -1,7 +1,9 @@
 package io.wanjune.zagent.config;
 
+import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.document.MetadataMode;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -24,19 +26,37 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class AiConfig {
 
     @Bean("vectorStore")
-    public PgVectorStore pgVectorStore(@Value("${spring.ai.openai.base-url}") String baseUrl,
-                                        @Value("${spring.ai.openai.api-key}") String apiKey,
+    public PgVectorStore pgVectorStore(@Value("${spring.ai.openai.embedding.base-url:${spring.ai.openai.base-url}}") String baseUrl,
+                                        @Value("${spring.ai.openai.embedding.api-key:${spring.ai.openai.api-key}}") String apiKey,
+                                        @Value("${spring.ai.openai.embedding.embeddings-path:/v1/embeddings}") String embeddingsPath,
+                                        @Value("${spring.ai.openai.embedding.options.model:text-embedding-3-small}") String embeddingModel,
+                                        @Value("${spring.ai.openai.embedding.options.dimensions:0}") int embeddingDimensions,
                                         @Qualifier("pgVectorJdbcTemplate") JdbcTemplate jdbcTemplate) {
 
         OpenAiApi openAiApi = OpenAiApi.builder()
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)
+                .embeddingsPath(embeddingsPath)
                 .build();
 
-        OpenAiEmbeddingModel embeddingModel = new OpenAiEmbeddingModel(openAiApi);
-        return PgVectorStore.builder(jdbcTemplate, embeddingModel)
+        OpenAiEmbeddingOptions.Builder optionsBuilder = OpenAiEmbeddingOptions.builder().model(embeddingModel);
+        if (embeddingDimensions > 0) {
+            optionsBuilder.dimensions(embeddingDimensions);
+        }
+
+        OpenAiEmbeddingModel openAiEmbeddingModel = new OpenAiEmbeddingModel(
+                openAiApi,
+                MetadataMode.NONE,
+                optionsBuilder.build()
+        );
+
+        var storeBuilder = PgVectorStore.builder(jdbcTemplate, openAiEmbeddingModel)
                 .vectorTableName("vector_store")
-                .build();
+                .initializeSchema(true);
+        if (embeddingDimensions > 0) {
+            storeBuilder.dimensions(embeddingDimensions);
+        }
+        return storeBuilder.build();
     }
 
     /**

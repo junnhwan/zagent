@@ -45,6 +45,8 @@ public interface IExecuteStrategy {
         private int maxStep = 3;
         /** 客户端类型映射: clientType -> clientId */
         private Map<String, String> clientTypeMap;
+        /** 步骤提示词映射: clientType -> stepPrompt */
+        private Map<String, String> stepPromptMap;
     }
 
     /**
@@ -55,10 +57,15 @@ public interface IExecuteStrategy {
     @NoArgsConstructor
     @AllArgsConstructor
     class StageEvent {
-        /** 阶段名称: analysis/execution/supervision/summary/plan/step_execution/complete */
+        /** 阶段名称: analysis/execution/supervision/summary/plan/step_execution/tool_analysis/complete */
         private String stage;
+        /** 事件状态: active(进行中)/done(完成)/error(失败) */
+        @Builder.Default
+        private String status = "done";
         /** 当前轮次 */
         private int step;
+        /** 总步骤数(用于进度显示) */
+        private int totalSteps;
         /** 阶段内容 */
         private String content;
         /** 会话ID */

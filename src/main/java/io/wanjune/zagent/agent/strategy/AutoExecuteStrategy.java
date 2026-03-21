@@ -2,6 +2,7 @@ package io.wanjune.zagent.agent.strategy;
 
 import io.wanjune.zagent.model.enums.ClientTypeEnum;
 import io.wanjune.zagent.service.AiClientAssemblyService;
+import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -31,9 +32,9 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
     @Resource
     private AiClientAssemblyService aiClientAssemblyService;
 
-    // ==================== 提示词模板（参考ai-agent-station-study） ====================
+    // ==================== 默认提示词模板（DB未配置时的降级方案） ====================
 
-    private static final String ANALYZER_PROMPT = """
+    private static final String DEFAULT_ANALYZER_PROMPT = """
             **原始用户需求:** %s
             **当前执行步骤:** 第 %d 步 (最大 %d 步)
             **历史执行记录:**
@@ -53,7 +54,7 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
             任务状态: [CONTINUE/COMPLETED]
             """;
 
-    private static final String EXECUTOR_PROMPT = """
+    private static final String DEFAULT_EXECUTOR_PROMPT = """
             **用户原始需求:** %s
             **分析师策略:** %s
             **执行指令:** 你是一个精准任务执行器，需要根据用户需求和分析师策略，实际执行具体的任务。
@@ -70,7 +71,7 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
             质量检查: [对执行结果的质量评估]
             """;
 
-    private static final String SUPERVISOR_PROMPT = """
+    private static final String DEFAULT_SUPERVISOR_PROMPT = """
             **用户原始需求:** %s
             **执行结果:** %s
             **监督要求:**
@@ -88,7 +89,7 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
             是否通过: [PASS/FAIL/OPTIMIZE]
             """;
 
-    private static final String SUMMARY_COMPLETED_PROMPT = """
+    private static final String DEFAULT_SUMMARY_COMPLETED_PROMPT = """
             基于以下执行过程，请直接回答用户的原始问题，提供最终的答案和结果：
             **用户原始问题:** %s
             **执行历史和过程:**
@@ -103,7 +104,7 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
             请直接给出用户问题的最终答案：
             """;
 
-    private static final String SUMMARY_INCOMPLETE_PROMPT = """
+    private static final String DEFAULT_SUMMARY_INCOMPLETE_PROMPT = """
             虽然任务未完全执行完成，但请基于已有的执行过程，尽力回答用户的原始问题：
             **用户原始问题:** %s
             **已执行的过程和获得的信息:**
@@ -120,6 +121,7 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
     @Override
     public String execute(ExecuteContext context, SseEmitter emitter) throws Exception {
         Map<String, String> clientTypeMap = context.getClientTypeMap();
+        Map<String, String> stepPromptMap = context.getStepPromptMap();
         int maxStep = context.getMaxStep();
         String userMessage = context.getUserInput();
         String currentTask = userMessage;
@@ -131,6 +133,12 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
         String supervisorClientId = clientTypeMap.get(ClientTypeEnum.QUALITY_SUPERVISOR.getCode());
         String summaryClientId = clientTypeMap.get(ClientTypeEnum.RESPONSE_ASSISTANT.getCode());
 
+        // 从DB加载提示词, 无则使用默认值
+        String analyzerPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.TASK_ANALYZER.getCode(), DEFAULT_ANALYZER_PROMPT);
+        String executorPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.PRECISION_EXECUTOR.getCode(), DEFAULT_EXECUTOR_PROMPT);
+        String supervisorPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.QUALITY_SUPERVISOR.getCode(), DEFAULT_SUPERVISOR_PROMPT);
+        String[] summaryPrompts = getSummaryPrompts(stepPromptMap);
+
         for (int step = 1; step <= maxStep; step++) {
             log.info("Auto策略 - 第{}轮开始, 任务: {}", step, currentTask.substring(0, Math.min(100, currentTask.length())));
 
@@ -139,9 +147,10 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
             if (analyzerClientId != null) {
                 ChatClient analyzerClient = aiClientAssemblyService.getOrBuildChatClient(analyzerClientId);
                 String historyText = executionHistory.isEmpty() ? "[首次执行]" : executionHistory.toString();
-                String prompt = String.format(ANALYZER_PROMPT, userMessage, step, maxStep, historyText, currentTask);
+                String prompt = String.format(analyzerPrompt, userMessage, step, maxStep, historyText, currentTask);
+                sendStageEvent(emitter, "analysis", "active", step, maxStep, null, context.getConversationId());
                 analysisResult = callClient(analyzerClient, prompt, context.getConversationId());
-                sendStageEvent(emitter, "analysis", step, analysisResult, context.getConversationId());
+                sendStageEvent(emitter, "analysis", "done", step, maxStep, analysisResult, context.getConversationId());
                 log.info("Auto策略 - 第{}轮分析完成", step);
 
                 // 检测提前完成
@@ -156,9 +165,10 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
             String executionResult = "";
             if (executorClientId != null) {
                 ChatClient executorClient = aiClientAssemblyService.getOrBuildChatClient(executorClientId);
-                String prompt = String.format(EXECUTOR_PROMPT, userMessage, analysisResult);
+                String prompt = String.format(executorPrompt, userMessage, analysisResult);
+                sendStageEvent(emitter, "execution", "active", step, maxStep, null, context.getConversationId());
                 executionResult = callClient(executorClient, prompt, context.getConversationId());
-                sendStageEvent(emitter, "execution", step, executionResult, context.getConversationId());
+                sendStageEvent(emitter, "execution", "done", step, maxStep, executionResult, context.getConversationId());
 
                 // 追加执行历史
                 executionHistory.append(String.format(
@@ -170,9 +180,10 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
             // === 阶段3: 监督 ===
             if (supervisorClientId != null) {
                 ChatClient supervisorClient = aiClientAssemblyService.getOrBuildChatClient(supervisorClientId);
-                String prompt = String.format(SUPERVISOR_PROMPT, userMessage, executionResult);
+                String prompt = String.format(supervisorPrompt, userMessage, executionResult);
+                sendStageEvent(emitter, "supervision", "active", step, maxStep, null, context.getConversationId());
                 String supervisionResult = callClient(supervisorClient, prompt, context.getConversationId());
-                sendStageEvent(emitter, "supervision", step, supervisionResult, context.getConversationId());
+                sendStageEvent(emitter, "supervision", "done", step, maxStep, supervisionResult, context.getConversationId());
                 log.info("Auto策略 - 第{}轮监督完成", step);
 
                 // 判断质量并更新任务（关键反馈循环）
@@ -195,20 +206,62 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
         }
 
         // === 阶段4: 总结 ===
+        sendStageEvent(emitter, "summary", "active", 0, maxStep, null, context.getConversationId());
         String finalOutput;
         if (summaryClientId != null) {
             ChatClient summaryClient = aiClientAssemblyService.getOrBuildChatClient(summaryClientId);
             String prompt = isCompleted
-                    ? String.format(SUMMARY_COMPLETED_PROMPT, userMessage, executionHistory)
-                    : String.format(SUMMARY_INCOMPLETE_PROMPT, userMessage, executionHistory);
+                    ? String.format(summaryPrompts[0], userMessage, executionHistory)
+                    : String.format(summaryPrompts[1], userMessage, executionHistory);
             finalOutput = callClient(summaryClient, prompt, context.getConversationId());
         } else {
             finalOutput = executionHistory.toString();
         }
 
-        sendStageEvent(emitter, "summary", 0, finalOutput, context.getConversationId());
-        sendStageEvent(emitter, "complete", 0, "执行完成", context.getConversationId());
+        sendStageEvent(emitter, "summary", "done", 0, maxStep, finalOutput, context.getConversationId());
+        sendStageEvent(emitter, "complete", "done", 0, maxStep, "执行完成", context.getConversationId());
         return finalOutput;
+    }
+
+    /**
+     * 从stepPromptMap获取指定角色的提示词, DB未配置时返回默认值
+     */
+    private String getStepPrompt(Map<String, String> stepPromptMap, String clientType, String defaultPrompt) {
+        if (stepPromptMap == null) return defaultPrompt;
+        String dbPrompt = stepPromptMap.get(clientType);
+        return (dbPrompt != null && !dbPrompt.isBlank()) ? dbPrompt : defaultPrompt;
+    }
+
+    /**
+     * 获取总结阶段的两个提示词变体 [completed, incomplete]
+     * DB支持JSON格式: {"completed": "...", "incomplete": "..."}
+     * 或纯文本格式（仅作为completed使用, incomplete用默认值）
+     */
+    private String[] getSummaryPrompts(Map<String, String> stepPromptMap) {
+        if (stepPromptMap == null) {
+            return new String[]{DEFAULT_SUMMARY_COMPLETED_PROMPT, DEFAULT_SUMMARY_INCOMPLETE_PROMPT};
+        }
+        String dbPrompt = stepPromptMap.get(ClientTypeEnum.RESPONSE_ASSISTANT.getCode());
+        if (dbPrompt == null || dbPrompt.isBlank()) {
+            return new String[]{DEFAULT_SUMMARY_COMPLETED_PROMPT, DEFAULT_SUMMARY_INCOMPLETE_PROMPT};
+        }
+        // 尝试JSON解析
+        String trimmed = dbPrompt.trim();
+        if (trimmed.startsWith("{")) {
+            try {
+                JSONObject json = JSONObject.parseObject(trimmed);
+                String completed = json.getString("completed");
+                String incomplete = json.getString("incomplete");
+                return new String[]{
+                        (completed != null && !completed.isBlank()) ? completed : DEFAULT_SUMMARY_COMPLETED_PROMPT,
+                        (incomplete != null && !incomplete.isBlank()) ? incomplete : DEFAULT_SUMMARY_INCOMPLETE_PROMPT
+                };
+            } catch (Exception e) {
+                log.warn("解析response_assistant的step_prompt JSON失败, 使用默认值", e);
+            }
+        }
+        // 纯文本: 仅作为completed prompt使用
+        return new String[]{dbPrompt, DEFAULT_SUMMARY_INCOMPLETE_PROMPT};
     }
 
     /**
@@ -239,11 +292,12 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
                 .content();
     }
 
-    private void sendStageEvent(SseEmitter emitter, String stage, int step, String content, String sessionId) {
+    private void sendStageEvent(SseEmitter emitter, String stage, String status, int step, int totalSteps, String content, String sessionId) {
         if (emitter == null) return;
         try {
             StageEvent event = StageEvent.builder()
-                    .stage(stage).step(step).content(content).sessionId(sessionId).build();
+                    .stage(stage).status(status).step(step).totalSteps(totalSteps)
+                    .content(content).sessionId(sessionId).build();
             emitter.send(SseEmitter.event().data(com.alibaba.fastjson.JSON.toJSONString(event)));
         } catch (Exception e) {
             log.error("发送SSE事件失败", e);

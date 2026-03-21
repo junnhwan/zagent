@@ -16,4 +16,8 @@
         SELECT * FROM ai_client WHERE client_id = #{clientId} AND status = 1
     </select>
 
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT * FROM ai_client ORDER BY create_time DESC
+    </select>
+
 </mapper>

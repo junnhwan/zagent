@@ -117,11 +117,16 @@ public class AgentServiceImpl implements AgentService {
 
         // 构建 clientType -> clientId 映射（保持插入顺序）
         Map<String, String> clientTypeMap = new LinkedHashMap<>();
+        // 构建 clientType -> stepPrompt 映射
+        Map<String, String> stepPromptMap = new LinkedHashMap<>();
         for (AiAgentFlowConfig config : flowConfigs) {
             String clientType = config.getClientType() != null ? config.getClientType() : "default";
             // Fixed策略可能有多个default类型, 用sequence区分
             String key = clientType.equals("default") ? clientType + "_" + config.getSequence() : clientType;
             clientTypeMap.put(key, config.getClientId());
+            if (config.getStepPrompt() != null && !config.getStepPrompt().isBlank()) {
+                stepPromptMap.put(key, config.getStepPrompt());
+            }
         }
 
         String conversationId = request.getConversationId() != null
@@ -134,6 +139,7 @@ public class AgentServiceImpl implements AgentService {
                 .conversationId(conversationId)
                 .maxStep(request.getMaxStep() > 0 ? request.getMaxStep() : 3)
                 .clientTypeMap(clientTypeMap)
+                .stepPromptMap(stepPromptMap)
                 .build();
     }
 
