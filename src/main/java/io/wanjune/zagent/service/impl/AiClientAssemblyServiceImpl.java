@@ -25,12 +25,14 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.PromptChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -283,6 +285,10 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
             return Collections.emptyList();
         }
 
+        List<String> bindingLabels = mcpTools.stream()
+                .map(AiClientAssemblyServiceImpl::formatMcpBindingLabel)
+                .toList();
+
         List<McpSyncClient> mcpClients = new ArrayList<>();
         for (AiClientToolMcp mcp : mcpTools) {
             try {
@@ -302,7 +308,85 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
         }
 
         ToolCallback[] callbacks = new SyncMcpToolCallbackProvider(mcpClients).getToolCallbacks();
-        return Arrays.asList(callbacks);
+        List<String> toolNames = Arrays.stream(callbacks)
+                .map(callback -> safeToolName(callback.getToolDefinition()))
+                .toList();
+
+        log.info("MCP tool callbacks ready: bindings={}, tools={}", bindingLabels, toolNames);
+
+        return Arrays.stream(callbacks)
+                .map(callback -> wrapToolCallback(callback, bindingLabels))
+                .toList();
+    }
+
+    private ToolCallback wrapToolCallback(ToolCallback delegate, List<String> bindingLabels) {
+        return new ToolCallback() {
+            @Override
+            public ToolDefinition getToolDefinition() {
+                return delegate.getToolDefinition();
+            }
+
+            @Override
+            public org.springframework.ai.tool.metadata.ToolMetadata getToolMetadata() {
+                return delegate.getToolMetadata();
+            }
+
+            @Override
+            public String call(String input) {
+                String toolName = safeToolName(delegate.getToolDefinition());
+                log.info("MCP tool invocation start: tool={}, bindings={}, inputPreview={}",
+                        toolName, bindingLabels, abbreviateForLog(input));
+                try {
+                    String result = delegate.call(input);
+                    log.info("MCP tool invocation success: tool={}, bindings={}, resultPreview={}",
+                            toolName, bindingLabels, abbreviateForLog(result));
+                    return result;
+                } catch (Exception e) {
+                    log.error("MCP tool invocation failed: tool={}, bindings={}, error={}",
+                            toolName, bindingLabels, e.getMessage());
+                    throw e;
+                }
+            }
+
+            @Override
+            public String call(String input, ToolContext toolContext) {
+                String toolName = safeToolName(delegate.getToolDefinition());
+                log.info("MCP tool invocation start: tool={}, bindings={}, inputPreview={}",
+                        toolName, bindingLabels, abbreviateForLog(input));
+                try {
+                    String result = delegate.call(input, toolContext);
+                    log.info("MCP tool invocation success: tool={}, bindings={}, resultPreview={}",
+                            toolName, bindingLabels, abbreviateForLog(result));
+                    return result;
+                } catch (Exception e) {
+                    log.error("MCP tool invocation failed: tool={}, bindings={}, error={}",
+                            toolName, bindingLabels, e.getMessage());
+                    throw e;
+                }
+            }
+        };
+    }
+
+    static String formatMcpBindingLabel(AiClientToolMcp mcp) {
+        return mcp.getMcpName() + "[" + mcp.getTransportType() + "]";
+    }
+
+    static String abbreviateForLog(String text) {
+        if (text == null) {
+            return "null";
+        }
+        String normalized = text.replaceAll("\s+", " ").trim();
+        if (normalized.length() <= 160) {
+            return normalized;
+        }
+        return normalized.substring(0, 157) + "...";
+    }
+
+    private static String safeToolName(ToolDefinition definition) {
+        if (definition == null || definition.name() == null || definition.name().isBlank()) {
+            return "unknown";
+        }
+        return definition.name();
     }
 
     /**

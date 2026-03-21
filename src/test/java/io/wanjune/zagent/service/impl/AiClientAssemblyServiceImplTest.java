@@ -1,6 +1,7 @@
 package io.wanjune.zagent.service.impl;
 
 import io.modelcontextprotocol.client.transport.ServerParameters;
+import io.wanjune.zagent.model.entity.AiClientToolMcp;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -47,5 +48,15 @@ class AiClientAssemblyServiceImplTest {
 
         assertThat(AiClientAssemblyServiceImpl.normalizeSseEndpoint(null))
                 .isEqualTo("/sse");
+    }
+
+    @Test
+    void formatMcpBindingLabelIncludesNameAndTransport() {
+        AiClientToolMcp mcp = new AiClientToolMcp();
+        mcp.setMcpName("filesystem-docs");
+        mcp.setTransportType("stdio");
+
+        assertThat(AiClientAssemblyServiceImpl.formatMcpBindingLabel(mcp))
+                .isEqualTo("filesystem-docs[stdio]");
     }
 }

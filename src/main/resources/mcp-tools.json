@@ -65,14 +65,14 @@
     "sourceType" : "client",
     "sourceId" : "3006",
     "targetType" : "model",
-    "targetIds" : [ "2002" ],
+    "targetIds" : [ "2005" ],
     "extParam" : null,
     "status" : 1
   }, {
     "sourceType" : "client",
     "sourceId" : "3008",
     "targetType" : "model",
-    "targetIds" : [ "2002" ],
+    "targetIds" : [ "2005" ],
     "extParam" : null,
     "status" : 1
   } ]
