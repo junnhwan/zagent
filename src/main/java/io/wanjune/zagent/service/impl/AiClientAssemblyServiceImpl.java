@@ -16,6 +16,7 @@ import io.wanjune.zagent.model.enums.TransportTypeEnum;
 import io.wanjune.zagent.service.AiClientAssemblyService;
 import io.wanjune.zagent.service.McpBindingResolver;
 import io.wanjune.zagent.service.McpConfigSyncService;
+import io.wanjune.zagent.service.McpTransportConfigParser;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -77,6 +78,8 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     private McpConfigSyncService mcpConfigSyncService;
     @Resource
     private McpBindingResolver mcpBindingResolver;
+    @Resource
+    private McpTransportConfigParser mcpTransportConfigParser;
 
     /** {@inheritDoc} */
     @Override
@@ -319,9 +322,9 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
      * @return 閸掓繂顫愰崠鏍х暚閹存劗娈慚CP閸氬本顒炵€广垺鍩涚粩?
      */
     private McpSyncClient createSseMcpClient(String transportConfig, Duration timeout) {
-        JSONObject config = JSON.parseObject(transportConfig);
-        String baseUri = normalizeSseBaseUri(config.getString("baseUri"));
-        String sseEndpoint = normalizeSseEndpoint(config.getString("sseEndpoint"));
+        var config = mcpTransportConfigParser.parseSse(transportConfig);
+        String baseUri = config.baseUri();
+        String sseEndpoint = config.sseEndpoint();
 
         HttpClientSseClientTransport transport;
         if (sseEndpoint != null && !sseEndpoint.isEmpty()) {
@@ -345,7 +348,8 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
      * @return 閸掓繂顫愰崠鏍х暚閹存劗娈慚CP閸氬本顒炵€广垺鍩涚粩?
      */
     private McpSyncClient createStdioMcpClient(String transportConfig, Duration timeout) {
-        ServerParameters params = buildServerParameters(transportConfig);
+        ServerParameters params = mcpTransportConfigParser.toServerParameters(
+                mcpTransportConfigParser.parseStdio(transportConfig));
 
         McpSyncClient client = McpClient.sync(new StdioClientTransport(params))
                 .requestTimeout(timeout).build();
@@ -354,56 +358,16 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
     }
 
     static ServerParameters buildServerParameters(String transportConfig) {
-        JSONObject config = JSON.parseObject(transportConfig);
-        String toolName = config.keySet().iterator().next();
-        JSONObject toolConfig = config.getJSONObject(toolName);
-
-        String command = toolConfig.getString("command");
-        List<String> args = toolConfig.getJSONArray("args") != null
-                ? toolConfig.getJSONArray("args").toJavaList(String.class)
-                : Collections.emptyList();
-        Map<String, String> env = new LinkedHashMap<>();
-        JSONObject envConfig = toolConfig.getJSONObject("env");
-        if (envConfig != null) {
-            for (String key : envConfig.keySet()) {
-                Object value = envConfig.get(key);
-                if (value != null) {
-                    env.put(key, String.valueOf(value));
-                }
-            }
-        }
-
-        ServerParameters.Builder builder = ServerParameters.builder(command)
-                .args(args);
-        if (!env.isEmpty()) {
-            builder.env(env);
-        }
-        return builder.build();
+        McpTransportConfigParserImpl parser = new McpTransportConfigParserImpl();
+        return parser.toServerParameters(parser.parseStdio(transportConfig));
     }
 
     static String normalizeSseBaseUri(String baseUri) {
-        if (baseUri == null || baseUri.isBlank()) {
-            throw new IllegalArgumentException("baseUri must not be blank");
-        }
-        String normalized = baseUri.trim();
-        while (normalized.endsWith("/")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-        return normalized;
+        return McpTransportConfigParserImpl.normalizeSseBaseUri(baseUri);
     }
 
     static String normalizeSseEndpoint(String sseEndpoint) {
-        if (sseEndpoint == null || sseEndpoint.isBlank()) {
-            return "/sse";
-        }
-        String normalized = sseEndpoint.trim();
-        if (!normalized.startsWith("/")) {
-            normalized = "/" + normalized;
-        }
-        while (normalized.length() > 1 && normalized.endsWith("/")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-        return normalized;
+        return McpTransportConfigParserImpl.normalizeSseEndpoint(sseEndpoint);
     }
 
     /**
