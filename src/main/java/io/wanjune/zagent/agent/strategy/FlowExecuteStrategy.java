@@ -1,5 +1,8 @@
 package io.wanjune.zagent.agent.strategy;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import io.wanjune.zagent.model.enums.ClientTypeEnum;
 import io.wanjune.zagent.service.AiClientAssemblyService;
 import jakarta.annotation.Resource;
@@ -102,30 +105,32 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
             5. **依赖关系明确**: 合理安排步骤顺序，确保前置条件得到满足
             6. **合理粒度**: 避免过度细分，每个步骤应该是完整且独立的功能单元
 
-            ### 格式规范
-            请使用以下Markdown格式生成3-5个执行步骤：
+            ### 输出格式（必须严格遵守）
+            你必须只输出一个合法 JSON 对象，禁止输出 Markdown、解释文字、代码块标记。
 
-            ### 第1步：[步骤描述]
-            - **优先级**: [HIGH/MEDIUM/LOW]
-            - **使用工具**: [必须使用确切的函数名称]
-            - **依赖步骤**: [前置步骤序号，如无依赖则填写'无']
-            - **执行方法**: [具体执行策略，包含工具调用参数]
-            - **预期输出**: [期望的结果]
-            - **成功标准**: [判断任务完成的标准]
-
-            ### 第2步：[步骤描述]
-            ...
+            JSON 结构如下：
+            {
+              "summary": "一句话概括整体执行思路",
+              "steps": [
+                {
+                  "step": 1,
+                  "goal": "本步骤要完成的目标",
+                  "tool": "必须填写确切的工具或函数名称；若无需工具则填写 none",
+                  "dependsOn": [],
+                  "instruction": "给执行阶段的完整指令，必须完整保留用户请求中的关键细节、参数、约束和输出要求"
+                }
+              ]
+            }
 
             ### 质量检查清单
             生成计划后请确认：
-            - 每个步骤都有明确的序号和描述
-            - 使用了正确的Markdown格式
-            - 工具选择恰当
-            - 依赖关系清晰
-            - 执行方法具体可操作
-            - 成功标准明确可衡量
+            - 输出是合法 JSON，而不是 Markdown
+            - steps 数组不为空
+            - 每个 step 都有 step、goal、tool、dependsOn、instruction
+            - step 从 1 开始递增
+            - instruction 具体、可执行、保留用户关键细节
 
-            现在请开始生成执行步骤规划：
+            现在请直接输出执行计划 JSON：
             """;
 
     private static final String DEFAULT_STEP_EXECUTION_PROMPT = """
@@ -195,7 +200,9 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
                     + "\n\n## 步数限制\n最多规划 " + context.getMaxStep() + " 步，严禁输出超过该数量的执行步骤。";
             sendStageEvent(emitter, "planning", "active", 2, 0, null, context.getConversationId());
             planResult = callClient(planningClient, prompt, context.getConversationId());
-            sendStageEvent(emitter, "planning", "done", 2, 0, planResult, context.getConversationId());
+            log.info("Flow策略 - 规划原文预览: {}", abbreviateForLog(planResult));
+            sendStageEvent(emitter, "planning", "done", 2, 0, planResult,
+                    buildPlanningPayload(planResult, context.getMaxStep()), context.getConversationId());
             log.info("Flow策略 - 规划完成");
         }
 
@@ -263,7 +270,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
     }
 
     /**
-     * 解析执行计划为步骤Map（双重模式匹配）
+     * 限制最终执行步数，避免规划结果无限扩张。
      */
     static Map<Integer, String> limitExecutionSteps(Map<Integer, String> sourceSteps, int maxStep) {
         if (sourceSteps == null || sourceSteps.isEmpty()) {
@@ -279,6 +286,80 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
     }
 
     private Map<Integer, String> parseExecutionSteps(String planText) {
+        Map<Integer, String> jsonSteps = parseExecutionStepsFromJson(planText);
+        if (!jsonSteps.isEmpty()) {
+            log.info("Flow策略 - 计划解析方式: json, steps={}", jsonSteps.size());
+            return jsonSteps;
+        }
+
+        log.warn("Flow规划结果未通过JSON解析，回退到文本正则解析");
+        Map<Integer, String> textSteps = parseExecutionStepsFromText(planText);
+        if (!textSteps.isEmpty()) {
+            log.info("Flow策略 - 计划解析方式: text-fallback, steps={}", textSteps.size());
+        }
+        return textSteps;
+    }
+
+    private Map<Integer, String> parseExecutionStepsFromJson(String planText) {
+        Map<Integer, String> steps = new LinkedHashMap<>();
+        if (planText == null || planText.isBlank()) return steps;
+
+        try {
+            JSONObject root = JSON.parseObject(extractJsonObject(planText));
+            if (root == null) {
+                return steps;
+            }
+
+            JSONArray stepArray = root.getJSONArray("steps");
+            if (stepArray == null || stepArray.isEmpty()) {
+                log.warn("Flow规划JSON缺少有效的 steps 数组");
+                return Collections.emptyMap();
+            }
+
+            Set<Integer> stepNumbers = new HashSet<>();
+            for (int index = 0; index < stepArray.size(); index++) {
+                JSONObject stepObject = stepArray.getJSONObject(index);
+                if (stepObject == null) {
+                    throw new IllegalArgumentException("steps[" + index + "] 不是合法对象");
+                }
+
+                Integer stepNum = stepObject.getInteger("step");
+                String goal = trimToEmpty(stepObject.getString("goal"));
+                String tool = trimToEmpty(stepObject.getString("tool"));
+                String instruction = trimToEmpty(stepObject.getString("instruction"));
+                JSONArray dependsOn = stepObject.getJSONArray("dependsOn");
+
+                if (stepNum == null || stepNum <= 0) {
+                    throw new IllegalArgumentException("steps[" + index + "].step 必须为正整数");
+                }
+                if (!stepNumbers.add(stepNum)) {
+                    throw new IllegalArgumentException("steps 中存在重复 step: " + stepNum);
+                }
+                if (goal.isBlank()) {
+                    throw new IllegalArgumentException("steps[" + index + "].goal 不能为空");
+                }
+                if (tool.isBlank()) {
+                    throw new IllegalArgumentException("steps[" + index + "].tool 不能为空");
+                }
+                if (instruction.isBlank()) {
+                    throw new IllegalArgumentException("steps[" + index + "].instruction 不能为空");
+                }
+
+                String dependsOnText = dependsOn == null || dependsOn.isEmpty() ? "[]" : dependsOn.toJSONString();
+                steps.put(stepNum, String.format(
+                        "步骤标题: 第%d步 - %s\n使用工具: %s\n依赖步骤: %s\n执行指令:\n%s",
+                        stepNum, goal, tool, dependsOnText, instruction
+                ));
+            }
+            log.info("Flow策略 - JSON规划校验通过: steps={}", steps.keySet());
+            return steps;
+        } catch (Exception exception) {
+            log.warn("Flow规划JSON解析失败: {}", exception.getMessage());
+            return Collections.emptyMap();
+        }
+    }
+
+    private Map<Integer, String> parseExecutionStepsFromText(String planText) {
         Map<Integer, String> steps = new LinkedHashMap<>();
         if (planText == null || planText.isBlank()) return steps;
 
@@ -310,6 +391,47 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         return steps;
     }
 
+    static String extractJsonObject(String text) {
+        if (text == null) {
+            return null;
+        }
+        String trimmed = text.trim();
+        int start = trimmed.indexOf('{');
+        int end = trimmed.lastIndexOf('}');
+        if (start < 0 || end < start) {
+            return trimmed;
+        }
+        return trimmed.substring(start, end + 1);
+    }
+
+    private Object buildPlanningPayload(String planText, int maxStep) {
+        Map<Integer, String> parsedSteps = limitExecutionSteps(parseExecutionSteps(planText), maxStep);
+        if (parsedSteps.isEmpty()) {
+            return null;
+        }
+
+        List<Map<String, Object>> steps = new ArrayList<>();
+        parsedSteps.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> steps.add(Map.of(
+                        "step", entry.getKey(),
+                        "content", entry.getValue()
+                )));
+        return Map.of("steps", steps);
+    }
+
+    private String trimToEmpty(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private String abbreviateForLog(String text) {
+        if (text == null) {
+            return "<null>";
+        }
+        String normalized = text.replaceAll("\s+", " ").trim();
+        return normalized.length() > 200 ? normalized.substring(0, 200) + "...(截断)" : normalized;
+    }
+
     private String callClient(ChatClient client, String prompt, String conversationId) {
         return client.prompt(prompt)
                 .system(s -> s.param("current_date", LocalDate.now().toString()))
@@ -321,11 +443,16 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
     }
 
     private void sendStageEvent(SseEmitter emitter, String stage, String status, int step, int totalSteps, String content, String sessionId) {
+        sendStageEvent(emitter, stage, status, step, totalSteps, content, null, sessionId);
+    }
+
+    private void sendStageEvent(SseEmitter emitter, String stage, String status, int step, int totalSteps,
+                                String content, Object payload, String sessionId) {
         if (emitter == null) return;
         try {
             StageEvent event = StageEvent.builder()
                     .stage(stage).status(status).step(step).totalSteps(totalSteps)
-                    .content(content).sessionId(sessionId).build();
+                    .content(content).payload(payload).sessionId(sessionId).build();
             emitter.send(SseEmitter.event().data(com.alibaba.fastjson.JSON.toJSONString(event)));
         } catch (Exception e) {
             log.error("发送SSE事件失败", e);

@@ -68,6 +68,8 @@ public interface IExecuteStrategy {
         private int totalSteps;
         /** 阶段内容 */
         private String content;
+        /** 结构化扩展载荷（如规划步骤列表） */
+        private Object payload;
         /** 会话ID */
         private String sessionId;
     }

@@ -1505,7 +1505,7 @@ function addStageNode(container, event, isActive) {
   const dotClass = status === 'error' ? 'error' : (status === 'active' ? 'active' : 'done');
   const cardClass = status === 'active' ? 'active' : (status === 'error' ? 'error' : 'done');
   const badgeClass = getStageBadgeClass(event.stage);
-  const contentHtml = event.content ? renderMarkdown(event.content) : '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+  const contentHtml = formatStageContent(event);
   const stepLabel = event.step && event.totalSteps
     ? `<span class="stage-step">步骤 ${event.step}/${event.totalSteps}</span>`
     : (event.step ? `<span class="stage-step">步骤 ${event.step}</span>` : '');
@@ -1549,8 +1549,8 @@ function updateLastActiveNode(container, event) {
   // Update line state
   if (line) { line.classList.remove('active', 'done', 'error'); line.classList.add(status === 'error' ? 'error' : 'done'); }
   // Update content
-  if (contentEl && event.content) {
-    contentEl.innerHTML = renderMarkdown(event.content);
+  if (contentEl && (event.content || event.payload)) {
+    contentEl.innerHTML = formatStageContent(event);
   }
   // Update step label
   if (event.step && event.totalSteps) {
@@ -2205,6 +2205,22 @@ function renderMcpModeState(data) {
       }).join('');
     }
   }
+}
+
+function formatStageContent(event) {
+  if (!event || (!event.content && !event.payload)) {
+    return '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+  }
+
+  if (event.stage === 'planning' && event.payload && Array.isArray(event.payload.steps) && event.payload.steps.length) {
+    const structured = event.payload.steps.map(item => {
+      const content = escapeHtml(item.content || '');
+      return `<div style="margin-bottom:10px;"><div style="font-weight:600;margin-bottom:4px;">步骤 ${item.step}</div><div style="white-space:pre-wrap;">${content}</div></div>`;
+    }).join('');
+    return structured;
+  }
+
+  return event.content ? renderMarkdown(event.content) : '<div class="typing-indicator"><span></span><span></span><span></span></div>';
 }
 
 async function applyMcpMode(btn) {

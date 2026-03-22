@@ -80,13 +80,20 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
             2. 评估内容的完整性和实用性
             3. 确认是否提供了用户期望的具体结果（如学习计划、项目列表等）
             4. 判断是否只是描述过程而没有给出实际答案
-            **输出格式:**
-            需求匹配度: [执行结果与用户原始需求的匹配程度分析]
-            内容完整性: [内容是否完整、具体、实用]
-            问题识别: [发现的问题和不足，特别是是否偏离了用户真正的需求]
-            改进建议: [具体的改进建议，确保能直接满足用户需求]
-            质量评分: [1-10分的质量评分]
-            是否通过: [PASS/FAIL/OPTIMIZE]
+            **输出格式（必须严格遵守）:**
+            你必须只输出一个合法 JSON 对象，禁止输出解释文字、Markdown、代码块标记。
+            JSON 结构如下：
+            {
+              "decision": "PASS/FAIL/OPTIMIZE",
+              "score": 1,
+              "match": "需求匹配度分析",
+              "issues": "问题识别与不足",
+              "improvement": "具体改进建议"
+            }
+            约束：
+            1. decision 只能是 PASS / FAIL / OPTIMIZE
+            2. improvement 必须可执行，不能留空
+            3. 只输出 JSON，不要输出任何额外说明
             """;
 
     private static final String DEFAULT_SUMMARY_COMPLETED_PROMPT = """
@@ -187,15 +194,20 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
                 log.info("Auto策略 - 第{}轮监督完成", step);
 
                 // 判断质量并更新任务（关键反馈循环）
-                if (supervisionResult.contains("是否通过: PASS") || supervisionResult.contains("PASS")) {
+                log.info("Auto策略 - 监督原文预览: {}", abbreviateForLog(supervisionResult));
+                SupervisionDecision decision = parseSupervisionDecision(supervisionResult);
+                log.info("Auto策略 - 监督解析方式: {}, decision={}, improvement={}",
+                        decision.source(), decision.decision(), abbreviateForLog(decision.improvement()));
+
+                if ("PASS".equals(decision.decision())) {
                     log.info("Auto策略 - 第{}轮质量通过", step);
                     isCompleted = true;
                     break;
-                } else if (supervisionResult.contains("是否通过: FAIL") || supervisionResult.contains("FAIL")) {
-                    currentTask = "根据质量监督的建议重新执行任务。改进建议: " + extractSection(supervisionResult, "改进建议:");
+                } else if ("FAIL".equals(decision.decision())) {
+                    currentTask = "根据质量监督的建议重新执行任务。改进建议: " + decision.improvement();
                     log.info("Auto策略 - 第{}轮质量未通过(FAIL), 更新任务后重新分析", step);
-                } else if (supervisionResult.contains("OPTIMIZE")) {
-                    currentTask = "根据质量监督的建议优化执行结果。改进建议: " + extractSection(supervisionResult, "改进建议:");
+                } else if ("OPTIMIZE".equals(decision.decision())) {
+                    currentTask = "根据质量监督的建议优化执行结果。改进建议: " + decision.improvement();
                     log.info("Auto策略 - 第{}轮需优化(OPTIMIZE), 更新任务后重新分析", step);
                 }
             } else {
@@ -281,6 +293,93 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
         }
         return nextSection > 0 ? after.substring(0, nextSection).trim() : after.trim();
     }
+
+    static SupervisionDecision parseSupervisionDecision(String supervisionResult) {
+        SupervisionDecision jsonDecision = parseSupervisionDecisionFromJson(supervisionResult);
+        if (jsonDecision != null) {
+            return jsonDecision;
+        }
+
+        String improvement = extractSectionStatic(supervisionResult, "改进建议:");
+        if (supervisionResult != null) {
+            if (supervisionResult.contains("是否通过: PASS") || supervisionResult.contains("PASS")) {
+                return new SupervisionDecision("PASS", improvement, "text-fallback");
+            }
+            if (supervisionResult.contains("是否通过: FAIL") || supervisionResult.contains("FAIL")) {
+                return new SupervisionDecision("FAIL", improvement, "text-fallback");
+            }
+            if (supervisionResult.contains("OPTIMIZE")) {
+                return new SupervisionDecision("OPTIMIZE", improvement, "text-fallback");
+            }
+        }
+        return new SupervisionDecision("PASS", improvement, "text-fallback-default");
+    }
+
+    private static SupervisionDecision parseSupervisionDecisionFromJson(String supervisionResult) {
+        if (supervisionResult == null || supervisionResult.isBlank()) {
+            return null;
+        }
+        try {
+            JSONObject json = JSONObject.parseObject(extractJsonObject(supervisionResult));
+            if (json == null) {
+                return null;
+            }
+            String decision = trimToEmpty(json.getString("decision")).toUpperCase();
+            String improvement = trimToEmpty(json.getString("improvement"));
+            if (!("PASS".equals(decision) || "FAIL".equals(decision) || "OPTIMIZE".equals(decision))) {
+                throw new IllegalArgumentException("decision 非法: " + decision);
+            }
+            if (improvement.isBlank()) {
+                throw new IllegalArgumentException("improvement 不能为空");
+            }
+            return new SupervisionDecision(decision, improvement, "json");
+        } catch (Exception exception) {
+            log.warn("Auto监督JSON解析失败: {}", exception.getMessage());
+            return null;
+        }
+    }
+
+    static String extractJsonObject(String text) {
+        if (text == null) {
+            return null;
+        }
+        String trimmed = text.trim();
+        int start = trimmed.indexOf('{');
+        int end = trimmed.lastIndexOf('}');
+        if (start < 0 || end < start) {
+            return trimmed;
+        }
+        return trimmed.substring(start, end + 1);
+    }
+
+    private static String trimToEmpty(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private String abbreviateForLog(String text) {
+        if (text == null) {
+            return "<null>";
+        }
+        String normalized = text.replaceAll("\s+", " ").trim();
+        return normalized.length() > 200 ? normalized.substring(0, 200) + "...(截断)" : normalized;
+    }
+
+    private static String extractSectionStatic(String text, String sectionHeader) {
+        if (text == null) return "";
+        int idx = text.indexOf(sectionHeader);
+        if (idx < 0) return "";
+        String after = text.substring(idx + sectionHeader.length()).trim();
+        int nextSection = after.indexOf("\n");
+        for (String header : new String[]{"需求匹配度:", "内容完整性:", "问题识别:", "质量评分:", "是否通过:"}) {
+            int pos = after.indexOf(header);
+            if (pos > 0 && (nextSection < 0 || pos < nextSection)) {
+                nextSection = pos;
+            }
+        }
+        return nextSection > 0 ? after.substring(0, nextSection).trim() : after.trim();
+    }
+
+    record SupervisionDecision(String decision, String improvement, String source) {}
 
     private String callClient(ChatClient client, String prompt, String conversationId) {
         return client.prompt(prompt)
