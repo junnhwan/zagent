@@ -20,7 +20,7 @@ import io.wanjune.zagent.model.entity.AiClientSystemPrompt;
 import io.wanjune.zagent.model.entity.AiClientToolMcp;
 import io.wanjune.zagent.mcp.McpBindingResolver;
 import io.wanjune.zagent.mcp.McpConfigSyncService;
-import io.wanjune.zagent.mcp.McpTransportConfigParserImpl;
+import io.wanjune.zagent.mcp.impl.McpTransportConfigParserImpl;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;

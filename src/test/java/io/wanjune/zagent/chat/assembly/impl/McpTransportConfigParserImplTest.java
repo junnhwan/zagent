@@ -4,7 +4,7 @@ import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.wanjune.zagent.model.dto.SseTransportConfig;
 import io.wanjune.zagent.model.dto.StdioTransportConfig;
 import io.wanjune.zagent.mcp.McpTransportConfigParser;
-import io.wanjune.zagent.mcp.McpTransportConfigParserImpl;
+import io.wanjune.zagent.mcp.impl.McpTransportConfigParserImpl;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
