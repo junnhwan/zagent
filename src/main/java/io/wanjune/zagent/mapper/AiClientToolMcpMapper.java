@@ -27,4 +27,12 @@ public interface AiClientToolMcpMapper {
      */
     List<AiClientToolMcp> selectByMcpIds(@Param("mcpIds") List<String> mcpIds);
 
+    List<AiClientToolMcp> selectAll();
+
+    int insert(AiClientToolMcp mcp);
+
+    int update(AiClientToolMcp mcp);
+
+    int deleteByMcpId(@Param("mcpId") String mcpId);
+
 }

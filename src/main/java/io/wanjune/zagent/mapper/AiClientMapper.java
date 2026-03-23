@@ -16,4 +16,10 @@ public interface AiClientMapper {
     /** 查询所有客户端（管理用） */
     List<AiClient> selectAll();
 
+    int insert(AiClient client);
+
+    int update(AiClient client);
+
+    int deleteByClientId(@Param("clientId") String clientId);
+
 }

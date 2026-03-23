@@ -27,4 +27,12 @@ public interface AiClientSystemPromptMapper {
      */
     List<AiClientSystemPrompt> selectByPromptIds(@Param("promptIds") List<String> promptIds);
 
+    List<AiClientSystemPrompt> selectAll();
+
+    int insert(AiClientSystemPrompt prompt);
+
+    int update(AiClientSystemPrompt prompt);
+
+    int deleteByPromptId(@Param("promptId") String promptId);
+
 }

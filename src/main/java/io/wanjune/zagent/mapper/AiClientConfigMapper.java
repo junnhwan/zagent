@@ -32,4 +32,18 @@ public interface AiClientConfigMapper {
                                                       @Param("sourceId") String sourceId,
                                                       @Param("targetType") String targetType);
 
+    List<AiClientConfig> selectAll();
+
+    int insert(AiClientConfig config);
+
+    int deleteById(@Param("id") Long id);
+
+    int deleteBySourceAndTarget(@Param("sourceType") String sourceType,
+                                @Param("sourceId") String sourceId,
+                                @Param("targetType") String targetType,
+                                @Param("targetId") String targetId);
+
+    int deleteBySource(@Param("sourceType") String sourceType,
+                       @Param("sourceId") String sourceId);
+
 }

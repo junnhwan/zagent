@@ -3,6 +3,7 @@ package io.wanjune.zagent.mapper;
 import io.wanjune.zagent.model.entity.AiClientApi;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import java.util.List;
 
 /**
  * API端点配置 Mapper, 操作表: ai_client_api
@@ -17,5 +18,13 @@ public interface AiClientApiMapper {
      * @return API端点配置信息
      */
     AiClientApi selectByApiId(@Param("apiId") String apiId);
+
+    List<AiClientApi> selectAll();
+
+    int insert(AiClientApi api);
+
+    int update(AiClientApi api);
+
+    int deleteByApiId(@Param("apiId") String apiId);
 
 }

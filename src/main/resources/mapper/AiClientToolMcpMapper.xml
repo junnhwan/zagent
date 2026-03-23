@@ -25,4 +25,30 @@
         </foreach>
     </select>
 
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT * FROM ai_client_tool_mcp ORDER BY create_time DESC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_client_tool_mcp (mcp_id, mcp_name, transport_type, transport_config, request_timeout, status)
+        VALUES (#{mcpId}, #{mcpName}, #{transportType}, #{transportConfig}, #{requestTimeout}, IFNULL(#{status}, 1))
+    </insert>
+
+    <update id="update">
+        UPDATE ai_client_tool_mcp
+        <set>
+            <if test="mcpName != null">mcp_name = #{mcpName},</if>
+            <if test="transportType != null">transport_type = #{transportType},</if>
+            <if test="transportConfig != null">transport_config = #{transportConfig},</if>
+            <if test="requestTimeout != null">request_timeout = #{requestTimeout},</if>
+            <if test="status != null">status = #{status},</if>
+            update_time = NOW()
+        </set>
+        WHERE mcp_id = #{mcpId}
+    </update>
+
+    <delete id="deleteByMcpId">
+        DELETE FROM ai_client_tool_mcp WHERE mcp_id = #{mcpId}
+    </delete>
+
 </mapper>

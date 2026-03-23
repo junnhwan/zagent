@@ -20,4 +20,24 @@
         SELECT * FROM ai_client ORDER BY create_time DESC
     </select>
 
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_client (client_id, client_name, description, status)
+        VALUES (#{clientId}, #{clientName}, #{description}, IFNULL(#{status}, 1))
+    </insert>
+
+    <update id="update">
+        UPDATE ai_client
+        <set>
+            <if test="clientName != null">client_name = #{clientName},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="status != null">status = #{status},</if>
+            update_time = NOW()
+        </set>
+        WHERE client_id = #{clientId}
+    </update>
+
+    <delete id="deleteByClientId">
+        DELETE FROM ai_client WHERE client_id = #{clientId}
+    </delete>
+
 </mapper>

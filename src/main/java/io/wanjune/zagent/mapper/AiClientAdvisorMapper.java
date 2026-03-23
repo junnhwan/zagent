@@ -27,4 +27,12 @@ public interface AiClientAdvisorMapper {
      */
     List<AiClientAdvisor> selectByAdvisorIds(@Param("advisorIds") List<String> advisorIds);
 
+    List<AiClientAdvisor> selectAll();
+
+    int insert(AiClientAdvisor advisor);
+
+    int update(AiClientAdvisor advisor);
+
+    int deleteByAdvisorId(@Param("advisorId") String advisorId);
+
 }

@@ -18,4 +18,30 @@
         SELECT * FROM ai_client_api WHERE api_id = #{apiId} AND status = 1
     </select>
 
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT * FROM ai_client_api ORDER BY create_time DESC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_client_api (api_id, base_url, api_key, completions_path, embeddings_path, status)
+        VALUES (#{apiId}, #{baseUrl}, #{apiKey}, #{completionsPath}, #{embeddingsPath}, IFNULL(#{status}, 1))
+    </insert>
+
+    <update id="update">
+        UPDATE ai_client_api
+        <set>
+            <if test="baseUrl != null">base_url = #{baseUrl},</if>
+            <if test="apiKey != null">api_key = #{apiKey},</if>
+            <if test="completionsPath != null">completions_path = #{completionsPath},</if>
+            <if test="embeddingsPath != null">embeddings_path = #{embeddingsPath},</if>
+            <if test="status != null">status = #{status},</if>
+            update_time = NOW()
+        </set>
+        WHERE api_id = #{apiId}
+    </update>
+
+    <delete id="deleteByApiId">
+        DELETE FROM ai_client_api WHERE api_id = #{apiId}
+    </delete>
+
 </mapper>

@@ -26,4 +26,30 @@
         ORDER BY order_num ASC
     </select>
 
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT * FROM ai_client_advisor ORDER BY create_time DESC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_client_advisor (advisor_id, advisor_name, advisor_type, order_num, ext_param, status)
+        VALUES (#{advisorId}, #{advisorName}, #{advisorType}, #{orderNum}, #{extParam}, IFNULL(#{status}, 1))
+    </insert>
+
+    <update id="update">
+        UPDATE ai_client_advisor
+        <set>
+            <if test="advisorName != null">advisor_name = #{advisorName},</if>
+            <if test="advisorType != null">advisor_type = #{advisorType},</if>
+            <if test="orderNum != null">order_num = #{orderNum},</if>
+            <if test="extParam != null">ext_param = #{extParam},</if>
+            <if test="status != null">status = #{status},</if>
+            update_time = NOW()
+        </set>
+        WHERE advisor_id = #{advisorId}
+    </update>
+
+    <delete id="deleteByAdvisorId">
+        DELETE FROM ai_client_advisor WHERE advisor_id = #{advisorId}
+    </delete>
+
 </mapper>

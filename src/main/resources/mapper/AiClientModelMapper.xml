@@ -17,4 +17,29 @@
         SELECT * FROM ai_client_model WHERE model_id = #{modelId} AND status = 1
     </select>
 
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT * FROM ai_client_model ORDER BY create_time DESC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_client_model (model_id, api_id, model_name, model_type, status)
+        VALUES (#{modelId}, #{apiId}, #{modelName}, #{modelType}, IFNULL(#{status}, 1))
+    </insert>
+
+    <update id="update">
+        UPDATE ai_client_model
+        <set>
+            <if test="apiId != null">api_id = #{apiId},</if>
+            <if test="modelName != null">model_name = #{modelName},</if>
+            <if test="modelType != null">model_type = #{modelType},</if>
+            <if test="status != null">status = #{status},</if>
+            update_time = NOW()
+        </set>
+        WHERE model_id = #{modelId}
+    </update>
+
+    <delete id="deleteByModelId">
+        DELETE FROM ai_client_model WHERE model_id = #{modelId}
+    </delete>
+
 </mapper>
