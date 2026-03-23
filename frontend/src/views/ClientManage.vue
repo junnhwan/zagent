@@ -90,7 +90,7 @@
             <el-option label="模型 (model)" value="model" />
             <el-option label="提示词 (prompt)" value="prompt" />
             <el-option label="Advisor" value="advisor" />
-            <el-option label="MCP 工具 (mcp)" value="mcp" />
+            <el-option label="MCP 工具 (tool_mcp)" value="tool_mcp" />
           </el-select>
         </el-form-item>
         <el-form-item label="目标 ID" prop="targetId">
@@ -226,7 +226,7 @@ const handleTargetTypeChange = async (type) => {
     if (type === 'model') { list = await modelApi.list(); targetOptions.value = (list || []).map(i => ({ id: i.modelId, label: `${i.modelId} (${i.modelName || ''})` })) }
     else if (type === 'prompt') { list = await promptApi.list(); targetOptions.value = (list || []).map(i => ({ id: i.promptId, label: `${i.promptId} (${i.promptName || ''})` })) }
     else if (type === 'advisor') { list = await advisorApi.list(); targetOptions.value = (list || []).map(i => ({ id: i.advisorId, label: `${i.advisorId} (${i.advisorName || ''})` })) }
-    else if (type === 'mcp') { list = await mcpApi.list(); targetOptions.value = (list || []).map(i => ({ id: i.mcpId, label: `${i.mcpId} (${i.mcpName || ''})` })) }
+    else if (type === 'tool_mcp') { list = await mcpApi.list(); targetOptions.value = (list || []).map(i => ({ id: i.mcpId, label: `${i.mcpId} (${i.mcpName || ''})` })) }
   } catch { /* */ }
 }
 
