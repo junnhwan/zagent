@@ -3,7 +3,7 @@ package io.wanjune.zagent.controller;
 import io.wanjune.zagent.common.Result;
 import io.wanjune.zagent.model.dto.ChatRequest;
 import io.wanjune.zagent.model.vo.ChatMessageVO;
-import io.wanjune.zagent.service.ChatService;
+import io.wanjune.zagent.chat.service.ChatService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;

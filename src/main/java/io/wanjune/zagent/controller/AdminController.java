@@ -9,7 +9,7 @@ import io.wanjune.zagent.model.entity.AiAgent;
 import io.wanjune.zagent.model.entity.AiAgentFlowConfig;
 import io.wanjune.zagent.model.entity.AiClient;
 import io.wanjune.zagent.model.vo.McpModeStatusVO;
-import io.wanjune.zagent.service.McpModeAdminService;
+import io.wanjune.zagent.mcp.McpModeAdminService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;

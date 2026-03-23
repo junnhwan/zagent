@@ -3,7 +3,7 @@ package io.wanjune.zagent.controller;
 import io.wanjune.zagent.common.Result;
 import io.wanjune.zagent.model.dto.AgentRunRequest;
 import io.wanjune.zagent.model.vo.AgentResultVO;
-import io.wanjune.zagent.service.AgentService;
+import io.wanjune.zagent.agent.service.AgentService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;

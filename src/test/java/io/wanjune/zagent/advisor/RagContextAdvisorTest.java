@@ -1,5 +1,6 @@
 package io.wanjune.zagent.advisor;
 
+import io.wanjune.zagent.rag.advisor.RagContextAdvisor;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
 

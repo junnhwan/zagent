@@ -1,7 +1,7 @@
 package io.wanjune.zagent.controller;
 
 import io.wanjune.zagent.common.Result;
-import io.wanjune.zagent.service.RagService;
+import io.wanjune.zagent.rag.service.RagService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
