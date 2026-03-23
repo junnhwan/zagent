@@ -7,18 +7,18 @@ const http = axios.create({
   headers: { 'Content-Type': 'application/json' }
 })
 
-// Response interceptor — unwrap { code, message, data }
+// Response interceptor — unwrap { code: "0000", info, data }
 http.interceptors.response.use(
   (response) => {
     const res = response.data
-    if (res.code === 200) {
+    if (res.code === '0000') {
       return res.data
     }
-    ElMessage.error(res.message || '请求失败')
-    return Promise.reject(new Error(res.message || '请求失败'))
+    ElMessage.error(res.info || '请求失败')
+    return Promise.reject(new Error(res.info || '请求失败'))
   },
   (error) => {
-    ElMessage.error(error.response?.data?.message || error.message || '网络异常')
+    ElMessage.error(error.response?.data?.info || error.message || '网络异常')
     return Promise.reject(error)
   }
 )
