@@ -6,6 +6,7 @@ import io.wanjune.zagent.model.entity.AiAgent;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ public class AgentToolRegistry {
 
     @Resource
     private AiAgentMapper aiAgentMapper;
+    @Lazy
     @Resource
     private AgentService agentService;
 
