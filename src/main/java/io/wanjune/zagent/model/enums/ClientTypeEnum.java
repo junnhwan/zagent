@@ -31,7 +31,9 @@ public enum ClientTypeEnum {
     /** Flow策略 - 执行客户端 */
     EXECUTOR("executor"),
     /** ReAct策略 - 推理决策客户端 */
-    REACTOR("reactor");
+    REACTOR("reactor"),
+    /** Agent-as-Tool - 将其他Agent作为工具注入 (clientId字段存agentId列表, 逗号分隔; 或"all"表示所有) */
+    AGENT_TOOL("agent_tool");
 
     private final String code;
 

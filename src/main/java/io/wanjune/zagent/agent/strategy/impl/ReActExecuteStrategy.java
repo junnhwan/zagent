@@ -2,6 +2,7 @@ package io.wanjune.zagent.agent.strategy.impl;
 
 import com.alibaba.fastjson.JSON;
 import io.wanjune.zagent.agent.strategy.IExecuteStrategy;
+import io.wanjune.zagent.agent.tool.AgentToolRegistry;
 import io.wanjune.zagent.chat.assembly.AiClientAssemblyService;
 import io.wanjune.zagent.chat.assembly.model.AssembledAiClient;
 import io.wanjune.zagent.model.enums.ClientTypeEnum;
@@ -20,6 +21,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,8 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
 
     @Resource
     private AiClientAssemblyService aiClientAssemblyService;
+    @Resource
+    private AgentToolRegistry agentToolRegistry;
 
     private static final String DEFAULT_REACT_SYSTEM_PROMPT = """
             你是一个真正按 ReAct 范式运行的智能体。
@@ -74,6 +78,14 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
                 }
             }
         }
+
+        // Agent-as-Tool: 检查是否配置了agent_tool类型, 将其他Agent注入为工具
+        Map<String, ToolCallback> agentToolMap = buildAgentToolMap(clientTypeMap, context.getAgentId());
+        if (!agentToolMap.isEmpty()) {
+            toolMap.putAll(agentToolMap);
+            log.info("ReAct策略 - 已注入 {} 个Agent-as-Tool: {}", agentToolMap.size(), agentToolMap.keySet());
+        }
+
         int maxIterations = context.getMaxStep() > 0 ? context.getMaxStep() : 6;
 
         List<Message> messages = new ArrayList<>();
@@ -158,6 +170,34 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
         sendStageEvent(emitter, "complete", "done", maxIterations, maxIterations,
                 "执行完成", context.getConversationId());
         return finalAnswer;
+    }
+
+    /**
+     * 根据clientTypeMap中的agent_tool配置, 构建Agent工具映射。
+     * <p>在ai_agent_flow_config中配置 client_type='agent_tool', client_id字段的含义:
+     * <ul>
+     *   <li>"all" — 注入所有启用的Agent（排除自身）</li>
+     *   <li>逗号分隔的agentId列表 — 仅注入指定Agent</li>
+     * </ul>
+     * </p>
+     */
+    private Map<String, ToolCallback> buildAgentToolMap(Map<String, String> clientTypeMap, String currentAgentId) {
+        String agentToolConfig = clientTypeMap.get(ClientTypeEnum.AGENT_TOOL.getCode());
+        if (agentToolConfig == null || agentToolConfig.isBlank()) {
+            return Map.of();
+        }
+
+        List<ToolCallback> agentTools;
+        if ("all".equalsIgnoreCase(agentToolConfig.trim())) {
+            agentTools = agentToolRegistry.buildAllAgentTools(currentAgentId);
+        } else {
+            List<String> agentIds = Arrays.stream(agentToolConfig.split(","))
+                    .map(String::trim)
+                    .filter(id -> !id.isBlank() && !id.equals(currentAgentId))
+                    .toList();
+            agentTools = agentToolRegistry.buildAgentTools(agentIds);
+        }
+        return buildToolMap(agentTools);
     }
 
     private Map<String, ToolCallback> buildToolMap(List<ToolCallback> callbacks) {
