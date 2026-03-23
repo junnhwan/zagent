@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import logging
 from typing import Any
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -18,6 +19,27 @@ MCP_SSE_PATH = os.getenv("AMAP_MCP_SSE_PATH", "/sse")
 MCP_MESSAGE_PATH = os.getenv("AMAP_MCP_MESSAGE_PATH", "/messages/")
 
 mcp = FastMCP("zagent-amap-sse")
+logger = logging.getLogger("zagent-amap-sse")
+
+
+class MessageContentTypeCompatibilityMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and scope.get("method", "").upper() == "POST":
+            path = (scope.get("path") or "").rstrip("/")
+            message_path = MCP_MESSAGE_PATH.rstrip("/")
+            if path == message_path:
+                headers = list(scope.get("headers", []))
+                has_content_type = any(key.lower() == b"content-type" for key, _ in headers)
+                if not has_content_type:
+                    logger.warning("Missing Content-Type header in POST request, fallback to application/json")
+                    headers.append((b"content-type", b"application/json"))
+                    scope = dict(scope)
+                    scope["headers"] = headers
+
+        await self.app(scope, receive, send)
 
 
 def require_api_key(api_key: str) -> str:
@@ -135,6 +157,7 @@ def amap_search_poi(
 mcp.settings.sse_path = MCP_SSE_PATH
 mcp.settings.message_path = MCP_MESSAGE_PATH
 app = mcp.sse_app()
+app = MessageContentTypeCompatibilityMiddleware(app)
 
 
 if __name__ == "__main__":

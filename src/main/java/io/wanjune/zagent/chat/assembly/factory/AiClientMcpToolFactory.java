@@ -1,5 +1,6 @@
 package io.wanjune.zagent.chat.assembly.factory;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
@@ -9,7 +10,7 @@ import io.wanjune.zagent.model.dto.McpRuntimeState;
 import io.wanjune.zagent.model.entity.AiClientToolMcp;
 import io.wanjune.zagent.model.enums.TransportTypeEnum;
 import io.wanjune.zagent.mcp.McpTransportConfigParser;
-import io.wanjune.zagent.mcp.impl.McpTransportConfigParserImpl;
+import io.wanjune.zagent.mcp.McpTransportConfigParserImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ToolContext;
@@ -30,13 +31,13 @@ import java.util.Map;
 public class AiClientMcpToolFactory {
 
     private final McpTransportConfigParser mcpTransportConfigParser;
+    private final ObjectMapper objectMapper;
 
     public List<ToolCallback> buildMcpToolCallbacks(List<AiClientToolMcp> mcpTools,
                                                     List<McpSyncClient> mcpClientPool,
                                                     Map<String, McpRuntimeState> mcpRuntimeStates) {
         return mcpTools.stream().flatMap(mcp -> {
             String bindingLabel = formatMcpBindingLabel(mcp);
-            Instant start = Instant.now();
             try {
                 McpSyncClient client = createMcpClient(mcp);
                 mcpClientPool.add(client);
@@ -119,7 +120,7 @@ public class AiClientMcpToolFactory {
                         java.net.http.HttpClient.newBuilder(),
                         baseUri,
                         sseEndpoint,
-                        null))
+                        objectMapper))
                 .requestTimeout(timeout).build();
         client.initialize();
         return client;
@@ -134,11 +135,11 @@ public class AiClientMcpToolFactory {
         return client;
     }
 
-    static String formatMcpBindingLabel(AiClientToolMcp mcp) {
+    public static String formatMcpBindingLabel(AiClientToolMcp mcp) {
         return mcp.getMcpName() + "[" + mcp.getTransportType() + "]";
     }
 
-    static String abbreviateForLog(String text) {
+    public static String abbreviateForLog(String text) {
         if (text == null) {
             return "null";
         }

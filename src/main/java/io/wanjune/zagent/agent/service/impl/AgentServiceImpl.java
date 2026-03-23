@@ -21,7 +21,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * Agent编排服务实现, 基于策略模式分发到不同的执行策略。
- * <p>根据ai_agent表的strategy字段, 自动选择Fixed/Auto/Flow策略执行。
+ * <p>根据ai_agent表的strategy字段, 自动选择Fixed/Auto/ReAct/Plan-and-Execute策略执行。
  * 使用Spring Map注入实现策略分发, key为bean名称。</p>
  *
  * @author zagent
@@ -43,7 +43,9 @@ public class AgentServiceImpl implements AgentService {
     private static final Map<String, String> STRATEGY_BEAN_MAP = Map.of(
             "fixed", "fixedExecuteStrategy",
             "auto", "autoExecuteStrategy",
-            "flow", "flowExecuteStrategy"
+            "flow", "planAndExecuteExecuteStrategy",
+            "plan_execute", "planAndExecuteExecuteStrategy",
+            "react", "reactExecuteStrategy"
     );
 
     @Override
@@ -147,13 +149,22 @@ public class AgentServiceImpl implements AgentService {
      * 根据策略名称解析执行策略Bean
      */
     private IExecuteStrategy resolveStrategy(String strategy) {
+        String normalizedStrategy = normalizeStrategy(strategy);
         String beanName = STRATEGY_BEAN_MAP.getOrDefault(
-                strategy != null ? strategy : "fixed", "fixedExecuteStrategy");
+                normalizedStrategy, "fixedExecuteStrategy");
         IExecuteStrategy executeStrategy = executeStrategyMap.get(beanName);
         if (executeStrategy == null) {
             throw new IllegalArgumentException("不存在的执行策略: " + strategy);
         }
         return executeStrategy;
+    }
+
+    private String normalizeStrategy(String strategy) {
+        if (strategy == null || strategy.isBlank()) {
+            return "fixed";
+        }
+        String normalized = strategy.trim().toLowerCase();
+        return "flow".equals(normalized) ? "plan_execute" : normalized;
     }
 
 }

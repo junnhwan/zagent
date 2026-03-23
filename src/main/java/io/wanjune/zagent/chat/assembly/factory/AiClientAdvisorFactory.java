@@ -32,7 +32,15 @@ public class AiClientAdvisorFactory {
     public String buildSystemPrompt(List<AiClientSystemPrompt> prompts) {
         return prompts.stream()
                 .map(AiClientSystemPrompt::getPromptContent)
+                .map(this::escapeTemplateBraces)
                 .collect(Collectors.joining("\n\n"));
+    }
+
+    private String escapeTemplateBraces(String prompt) {
+        if (prompt == null || prompt.isEmpty()) {
+            return prompt;
+        }
+        return prompt.replace("{", "\\{").replace("}", "\\}");
     }
 
     public List<Advisor> buildAdvisors(List<AiClientAdvisor> advisorConfigs) {

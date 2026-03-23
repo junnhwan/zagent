@@ -2,6 +2,7 @@ package io.wanjune.zagent.chat.assembly;
 
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.ServerParameters;
+import io.wanjune.zagent.chat.assembly.model.AssembledAiClient;
 import io.wanjune.zagent.chat.assembly.factory.AiClientAdvisorFactory;
 import io.wanjune.zagent.chat.assembly.factory.AiClientMcpToolFactory;
 import io.wanjune.zagent.chat.assembly.factory.AiClientModelFactory;
@@ -11,6 +12,9 @@ import io.wanjune.zagent.mapper.AiClientApiMapper;
 import io.wanjune.zagent.mapper.AiClientModelMapper;
 import io.wanjune.zagent.mapper.AiClientSystemPromptMapper;
 import io.wanjune.zagent.mapper.AiClientToolMcpMapper;
+import io.wanjune.zagent.mcp.McpBindingResolver;
+import io.wanjune.zagent.mcp.McpConfigSyncService;
+import io.wanjune.zagent.mcp.McpTransportConfigParserImpl;
 import io.wanjune.zagent.model.dto.McpRuntimeState;
 import io.wanjune.zagent.model.entity.AiAgentFlowConfig;
 import io.wanjune.zagent.model.entity.AiClientAdvisor;
@@ -18,9 +22,6 @@ import io.wanjune.zagent.model.entity.AiClientApi;
 import io.wanjune.zagent.model.entity.AiClientModel;
 import io.wanjune.zagent.model.entity.AiClientSystemPrompt;
 import io.wanjune.zagent.model.entity.AiClientToolMcp;
-import io.wanjune.zagent.mcp.McpBindingResolver;
-import io.wanjune.zagent.mcp.McpConfigSyncService;
-import io.wanjune.zagent.mcp.impl.McpTransportConfigParserImpl;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +46,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org.springframework.beans.factory.DisposableBean {
 
     private final ConcurrentHashMap<String, ChatClient> clientCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AssembledAiClient> assembledClientCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, McpRuntimeState> mcpRuntimeStates = new ConcurrentHashMap<>();
     private final List<McpSyncClient> mcpClientPool = Collections.synchronizedList(new ArrayList<>());
 
@@ -76,12 +78,18 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
 
     @Override
     public ChatClient getOrBuildChatClient(String clientId) {
-        return clientCache.computeIfAbsent(clientId, this::buildChatClient);
+        return getOrBuildAssembledClient(clientId).chatClient();
+    }
+
+    @Override
+    public AssembledAiClient getOrBuildAssembledClient(String clientId) {
+        return assembledClientCache.computeIfAbsent(clientId, this::buildAssembledClient);
     }
 
     @Override
     public void invalidate(String clientId) {
         clientCache.remove(clientId);
+        assembledClientCache.remove(clientId);
         log.info("ChatClient cache invalidated for clientId: {}", clientId);
     }
 
@@ -102,6 +110,7 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
         }
         mcpClientPool.clear();
         clientCache.clear();
+        assembledClientCache.clear();
         log.info("MCP clients and ChatClient cache cleared");
     }
 
@@ -128,6 +137,10 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
         for (AiAgentFlowConfig config : flowConfigs) {
             try {
                 if (config.getClientId() != null) {
+                    if (hasMcpBinding(config.getClientId())) {
+                        log.info("Warmup skip MCP-enabled clientId: {}", config.getClientId());
+                        continue;
+                    }
                     getOrBuildChatClient(config.getClientId());
                     success++;
                 }
@@ -138,7 +151,17 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
         log.info("预热完成: {}/{} 个ChatClient构建成功", success, flowConfigs.size());
     }
 
-    private ChatClient buildChatClient(String clientId) {
+    private boolean hasMcpBinding(String clientId) {
+        try {
+            var bindingResolution = mcpBindingResolver.resolve(clientId);
+            return bindingResolution.mcpIds() != null && !bindingResolution.mcpIds().isEmpty();
+        } catch (Exception e) {
+            log.warn("Check MCP binding failed for clientId {}: {}", clientId, e.getMessage());
+            return false;
+        }
+    }
+
+    private AssembledAiClient buildAssembledClient(String clientId) {
         log.info("Building ChatClient for clientId: {}", clientId);
 
         var bindingResolution = mcpBindingResolver.resolve(clientId);
@@ -192,25 +215,28 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
             builder.defaultToolCallbacks(toolCallbacks);
         }
 
+        ChatClient chatClient = builder.build();
+        AssembledAiClient assembled = new AssembledAiClient(chatClient, chatModel, systemPrompt, advisorList, toolCallbacks);
+        clientCache.put(clientId, chatClient);
         log.info("ChatClient built successfully for clientId: {}, model: {}, advisors: {}, mcpTools: {}",
                 clientId, modelConfig.getModelName(), advisors.size(), mcpTools.size());
-        return builder.build();
+        return assembled;
     }
 
-    static ServerParameters buildServerParameters(String transportConfig) {
+    public static ServerParameters buildServerParameters(String transportConfig) {
         McpTransportConfigParserImpl parser = new McpTransportConfigParserImpl();
         return parser.toServerParameters(parser.parseStdio(transportConfig));
     }
 
-    static String normalizeSseBaseUri(String baseUri) {
+    public static String normalizeSseBaseUri(String baseUri) {
         return McpTransportConfigParserImpl.normalizeSseBaseUri(baseUri);
     }
 
-    static String normalizeSseEndpoint(String sseEndpoint) {
+    public static String normalizeSseEndpoint(String sseEndpoint) {
         return McpTransportConfigParserImpl.normalizeSseEndpoint(sseEndpoint);
     }
 
-    static String formatMcpBindingLabel(AiClientToolMcp mcp) {
+    public static String formatMcpBindingLabel(AiClientToolMcp mcp) {
         return AiClientMcpToolFactory.formatMcpBindingLabel(mcp);
     }
 }

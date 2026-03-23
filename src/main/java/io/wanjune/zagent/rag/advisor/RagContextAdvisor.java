@@ -161,7 +161,7 @@ public class RagContextAdvisor implements BaseAdvisor {
         return this.searchRequest.hasFilterExpression() ? String.valueOf(this.searchRequest.getFilterExpression()) : "<none>";
     }
 
-    static String summarizeDocuments(List<Document> documents) {
+    public static String summarizeDocuments(List<Document> documents) {
         if (documents == null || documents.isEmpty()) {
             return "hits=0";
         }

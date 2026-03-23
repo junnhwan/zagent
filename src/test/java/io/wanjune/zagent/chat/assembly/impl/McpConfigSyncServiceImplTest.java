@@ -1,7 +1,7 @@
 package io.wanjune.zagent.chat.assembly.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.wanjune.zagent.mcp.impl.McpConfigSyncServiceImpl;
+import io.wanjune.zagent.mcp.McpConfigSyncServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;

@@ -971,6 +971,8 @@ input[type="number"] { width: 70px; }
 .badge.strategy-fixed { background: rgba(37, 99, 235, 0.1); color: #2563eb; }
 .badge.strategy-auto { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
 .badge.strategy-flow { background: rgba(217, 119, 6, 0.1); color: #d97706; }
+.badge.strategy-plan_execute { background: rgba(217, 119, 6, 0.1); color: #d97706; }
+.badge.strategy-react { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
 .badge.status-on { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
 .badge.status-off { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
 
@@ -1075,8 +1077,8 @@ input[type="number"] { width: 70px; }
     <div class="panel active" id="panelChat">
       <div class="config-bar">
         <div class="config-group">
-          <span class="config-label">Client ID</span>
-          <input type="text" id="chatClientId" placeholder="输入 Client ID" value="3001" style="width: 200px;">
+          <span class="config-label">Chat Client</span>
+          <select id="chatClientId" style="width: 260px;"></select>
         </div>
         <div class="config-group">
           <span class="config-label">流式</span>
@@ -1089,7 +1091,7 @@ input[type="number"] { width: 70px; }
         <div class="empty-state">
           <div class="empty-state-icon">⚡</div>
           <div class="empty-state-text">开始一段新对话</div>
-          <div class="empty-state-hint">输入 Client ID，发送消息即可开始</div>
+          <div class="empty-state-hint">选择客户端后发送消息即可开始</div>
         </div>
       </div>
       <div class="input-area">
@@ -1109,8 +1111,8 @@ input[type="number"] { width: 70px; }
     <div class="panel" id="panelAgent">
       <div class="config-bar">
         <div class="config-group">
-          <span class="config-label">Agent ID</span>
-          <input type="text" id="agentId" placeholder="输入 Agent ID" value="2" style="width: 200px;">
+          <span class="config-label">Agent</span>
+          <select id="agentId" style="width: 260px;"></select>
         </div>
         <div class="config-group">
           <span class="config-label">最大步数</span>
@@ -1127,7 +1129,7 @@ input[type="number"] { width: 70px; }
         <div class="empty-state">
           <div class="empty-state-icon">⚙</div>
           <div class="empty-state-text">智能体执行面板</div>
-          <div class="empty-state-hint">输入 Agent ID 和任务，观察逐步执行过程</div>
+          <div class="empty-state-hint">选择 Agent 和任务，观察逐步执行过程</div>
         </div>
       </div>
       <div class="input-area">
@@ -1177,8 +1179,8 @@ input[type="number"] { width: 70px; }
           <!-- RAG Chat Config -->
           <div class="config-bar" style="border-top: 1px solid var(--panel-border); border-bottom: none;">
             <div class="config-group">
-              <span class="config-label">Client ID</span>
-              <input type="text" id="ragClientId" placeholder="输入 Client ID" style="width: 180px;" value="3001">
+          <span class="config-label">RAG Client</span>
+          <select id="ragClientId" style="width: 260px;"></select>
             </div>
             <div class="config-group">
               <span class="config-label">知识标签</span>
@@ -1427,7 +1429,7 @@ async function sendChat() {
   if (chatLoading) return;
   const clientId = document.getElementById('chatClientId').value.trim();
   const message = document.getElementById('chatInput').value.trim();
-  if (!clientId) return showToast('请输入 Client ID', 'error');
+  if (!clientId) return showToast('请选择 Client', 'error');
   if (!message) return;
 
   const container = document.getElementById('chatMessages');
@@ -1566,7 +1568,7 @@ async function sendAgent() {
   const agentIdVal = document.getElementById('agentId').value.trim();
   const userInput = document.getElementById('agentInput').value.trim();
   const maxStep = parseInt(document.getElementById('agentMaxStep').value) || 10;
-  if (!agentIdVal) return showToast('请输入 Agent ID', 'error');
+  if (!agentIdVal) return showToast('请选择 Agent', 'error');
   if (!userInput) return;
 
   const container = document.getElementById('agentTimeline');
@@ -1790,7 +1792,7 @@ async function sendRag() {
   const clientId = document.getElementById('ragClientId').value.trim();
   const knowledgeTag = document.getElementById('ragQueryTag').value.trim();
   const message = document.getElementById('ragInput').value.trim();
-  if (!clientId) return showToast('请输入 Client ID', 'error');
+  if (!clientId) return showToast('请选择 Client', 'error');
   if (!knowledgeTag) return showToast('请输入或选择知识标签', 'error');
   if (!message) return;
 
@@ -1827,6 +1829,98 @@ let adminAgentsCache = [];
 let adminClientsCache = [];
 let mcpConfigCache = null;
 
+function formatClientOption(client) {
+  const id = escapeHtml(client.clientId || '');
+  const name = escapeHtml(client.clientName || '未命名Client');
+  return `${name} (${id})`;
+}
+
+function formatAgentOption(agent) {
+  const id = escapeHtml(agent.agentId || '');
+  const name = escapeHtml(agent.agentName || '未命名Agent');
+  const strategy = escapeHtml(agent.strategy || 'fixed');
+  return `${name} (${id}) · ${strategy}`;
+}
+
+async function ensureClientOptionsLoaded() {
+  if (adminClientsCache.length) return adminClientsCache;
+  const res = await fetch(`${API_BASE}/api/admin/clients`);
+  const json = await res.json();
+  adminClientsCache = json.data || [];
+  return adminClientsCache;
+}
+
+async function ensureAgentOptionsLoaded() {
+  if (adminAgentsCache.length) return adminAgentsCache;
+  const res = await fetch(`${API_BASE}/api/admin/agents`);
+  const json = await res.json();
+  adminAgentsCache = json.data || [];
+  return adminAgentsCache;
+}
+
+async function loadRuntimeSelectors() {
+  try {
+    const clients = await ensureClientOptionsLoaded();
+    const agents = await ensureAgentOptionsLoaded();
+
+    const chatSelect = document.getElementById('chatClientId');
+    const ragSelect = document.getElementById('ragClientId');
+    const agentSelect = document.getElementById('agentId');
+
+    if (chatSelect) {
+      const current = chatSelect.value || '3001';
+      chatSelect.innerHTML = clients.map(c => `<option value="${escapeHtml(c.clientId)}" ${c.clientId === current ? 'selected' : ''}>${formatClientOption(c)}</option>`).join('');
+      if (![...chatSelect.options].some(o => o.value === current) && clients[0]) chatSelect.value = clients[0].clientId;
+    }
+
+    if (ragSelect) {
+      const current = ragSelect.value || '3001';
+      ragSelect.innerHTML = clients.map(c => `<option value="${escapeHtml(c.clientId)}" ${c.clientId === current ? 'selected' : ''}>${formatClientOption(c)}</option>`).join('');
+      if (![...ragSelect.options].some(o => o.value === current) && clients[0]) ragSelect.value = clients[0].clientId;
+    }
+
+    if (agentSelect) {
+      const current = agentSelect.value || '2';
+      agentSelect.innerHTML = agents.map(a => `<option value="${escapeHtml(a.agentId)}" ${a.agentId === current ? 'selected' : ''}>${formatAgentOption(a)}</option>`).join('');
+      if (![...agentSelect.options].some(o => o.value === current) && agents[0]) agentSelect.value = agents[0].agentId;
+    }
+  } catch (e) {
+    console.warn('loadRuntimeSelectors failed', e);
+  }
+}
+
+function getStrategyTemplateHint(strategy) {
+  const normalized = (strategy || '').toLowerCase();
+  const templates = {
+    fixed: [
+      'default'
+    ],
+    auto: [
+      'task_analyzer',
+      'precision_executor',
+      'quality_supervisor',
+      'response_assistant'
+    ],
+    react: [
+      'reactor',
+      'executor'
+    ],
+    plan_execute: [
+      'tool_mcp',
+      'planning',
+      'replanning(可选)',
+      'executor'
+    ],
+    flow: [
+      'tool_mcp',
+      'planning',
+      'replanning(可选)',
+      'executor'
+    ]
+  };
+  return templates[normalized] || ['default'];
+}
+
 function switchAdminTab(tab, btn) {
   document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
@@ -1844,6 +1938,7 @@ async function loadAdminAgents() {
     const json = await res.json();
     adminAgentsCache = json.data || [];
     renderAgentTable(adminAgentsCache);
+    loadRuntimeSelectors();
   } catch (e) { showToast('加载Agent列表失败: ' + e.message, 'error'); }
 }
 
@@ -1863,7 +1958,7 @@ function renderAgentTable(agents) {
       <td class="cell-truncate" title="${escapeHtml(a.description || '')}">${escapeHtml(a.description || '')}</td>
       <td class="actions">
         <button class="admin-btn small" onclick="showAgentModal('${a.agentId}')">编辑</button>
-        <button class="admin-btn small" onclick="viewAgentFlows('${a.agentId}')">流程</button>
+        <button class="admin-btn small" onclick="viewAgentFlows('${a.agentId}')">编排配置</button>
         <button class="admin-btn small danger" onclick="deleteAgent('${a.agentId}')">删除</button>
       </td>
     </tr>
@@ -1886,8 +1981,9 @@ function showAgentModal(agentId) {
       <label>策略</label>
       <select id="modalStrategy">
         <option value="fixed" ${agent?.strategy === 'fixed' ? 'selected' : ''}>fixed (顺序执行)</option>
-        <option value="auto" ${agent?.strategy === 'auto' ? 'selected' : ''}>auto (智能编排)</option>
-        <option value="flow" ${agent?.strategy === 'flow' ? 'selected' : ''}>flow (工具编排)</option>
+        <option value="react" ${agent?.strategy === 'react' ? 'selected' : ''}>react (ReAct)</option>
+        <option value="plan_execute" ${(agent?.strategy === 'plan_execute' || agent?.strategy === 'flow') ? 'selected' : ''}>plan_execute (Plan-and-Execute)</option>
+        <option value="auto" ${agent?.strategy === 'auto' ? 'selected' : ''}>auto (自定义多角色协同)</option>
       </select>
       <label>渠道</label>
       <input id="modalChannel" value="${agent ? escapeHtml(agent.channel || '') : 'agent'}" placeholder="agent">
@@ -1973,7 +2069,10 @@ async function loadFlowAgentSelect(selectAgentId) {
 
 async function loadFlowConfigs(agentId) {
   if (!agentId) return;
-  document.getElementById('flowAgentLabel').textContent = `(Agent: ${agentId})`;
+  const agent = adminAgentsCache.find(a => a.agentId === agentId);
+  document.getElementById('flowAgentLabel').textContent = agent
+    ? `(Agent: ${agent.agentName || ''} / ${agentId} / ${agent.strategy || 'fixed'})`
+    : `(Agent: ${agentId})`;
   try {
     const res = await fetch(`${API_BASE}/api/admin/agents/${agentId}/flows`);
     const json = await res.json();
@@ -1984,15 +2083,16 @@ async function loadFlowConfigs(agentId) {
 function renderFlowTable(flows) {
   const tbody = document.getElementById('flowTableBody');
   if (!flows.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:40px;">暂无步骤配置</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:40px;">暂无 Plan-and-Execute / ReAct 编排配置</td></tr>';
     return;
   }
   tbody.innerHTML = flows.map(f => {
+    const client = adminClientsCache.find(c => c.clientId === f.clientId);
     const promptPreview = f.stepPrompt ? (f.stepPrompt.length > 60 ? f.stepPrompt.substring(0, 60) + '...' : f.stepPrompt) : '-';
     return `
     <tr>
       <td>${f.id}</td>
-      <td><strong>${escapeHtml(f.clientId)}</strong></td>
+      <td><strong>${escapeHtml(client?.clientName || f.clientId)}</strong><div style="font-size:12px;color:var(--text-muted);">${escapeHtml(f.clientId)}</div></td>
       <td><span class="badge strategy-auto">${escapeHtml(f.clientType || 'default')}</span></td>
       <td>${f.sequence}</td>
       <td class="cell-truncate" title="${escapeHtml(f.stepPrompt || '')}">${escapeHtml(promptPreview)}</td>
@@ -2023,28 +2123,39 @@ function showFlowModal(flowId) {
 }
 
 function renderFlowModalInner(flow, agentId, isEdit) {
+  const agent = adminAgentsCache.find(a => a.agentId === agentId);
+  const strategy = agent?.strategy || 'fixed';
+  const recommended = getStrategyTemplateHint(strategy).join(' → ');
   const overlay = document.createElement('div');
   overlay.className = 'admin-modal-overlay';
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   overlay.innerHTML = `
     <div class="admin-modal">
-      <h3>${isEdit ? '编辑步骤' : '新建步骤'} (Agent: ${agentId})</h3>
-      <label>Client ID</label>
-      <input id="modalFlowClientId" value="${flow ? flow.clientId : ''}" placeholder="例如: 3002">
-      <label>角色 (client_type)</label>
+      <h3>${isEdit ? '编辑编排步骤' : '新建编排步骤'} (Agent: ${agent?.agentName || agentId})</h3>
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;line-height:1.7;">
+        当前策略：<strong>${escapeHtml(strategy)}</strong><br>
+        推荐节点模板：<strong>${escapeHtml(recommended)}</strong>
+      </div>
+      <label>Client</label>
+      <select id="modalFlowClientId">
+        ${adminClientsCache.map(c => `<option value="${escapeHtml(c.clientId)}" ${(flow?.clientId === c.clientId) ? 'selected' : ''}>${formatClientOption(c)}</option>`).join('')}
+      </select>
+      <label>角色 (client_type / 编排节点)</label>
       <select id="modalFlowClientType">
         <option value="default" ${flow?.clientType === 'default' ? 'selected' : ''}>default</option>
         <option value="task_analyzer" ${flow?.clientType === 'task_analyzer' ? 'selected' : ''}>task_analyzer</option>
         <option value="precision_executor" ${flow?.clientType === 'precision_executor' ? 'selected' : ''}>precision_executor</option>
         <option value="quality_supervisor" ${flow?.clientType === 'quality_supervisor' ? 'selected' : ''}>quality_supervisor</option>
         <option value="response_assistant" ${flow?.clientType === 'response_assistant' ? 'selected' : ''}>response_assistant</option>
+        <option value="reactor" ${flow?.clientType === 'reactor' ? 'selected' : ''}>reactor</option>
         <option value="tool_mcp" ${flow?.clientType === 'tool_mcp' ? 'selected' : ''}>tool_mcp</option>
         <option value="planning" ${flow?.clientType === 'planning' ? 'selected' : ''}>planning</option>
+        <option value="replanning" ${flow?.clientType === 'replanning' ? 'selected' : ''}>replanning</option>
         <option value="executor" ${flow?.clientType === 'executor' ? 'selected' : ''}>executor</option>
       </select>
       <label>序列号</label>
       <input id="modalFlowSequence" type="number" value="${flow ? flow.sequence : ''}" placeholder="1" min="1">
-      <label>Step Prompt (提示词模板)</label>
+      <label>节点 Prompt (提示词模板)</label>
       <textarea id="modalFlowStepPrompt" rows="6">${flow ? escapeHtml(flow.stepPrompt || '') : ''}</textarea>
       <div class="admin-modal-actions">
         <button class="admin-btn" onclick="this.closest('.admin-modal-overlay').remove()">取消</button>
@@ -2100,6 +2211,7 @@ async function loadAdminClients() {
     const res = await fetch(`${API_BASE}/api/admin/clients`);
     const json = await res.json();
     adminClientsCache = json.data || [];
+    loadRuntimeSelectors();
     const tbody = document.getElementById('clientTableBody');
     if (!adminClientsCache.length) {
       tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:40px;">暂无数据</td></tr>';
@@ -2207,6 +2319,12 @@ function renderMcpModeState(data) {
   }
 }
 
+function currentFlowAgentStrategy() {
+  const agentId = document.getElementById('flowAgentSelect')?.value;
+  const agent = adminAgentsCache.find(a => a.agentId === agentId);
+  return agent?.strategy || 'fixed';
+}
+
 function formatStageContent(event) {
   if (!event || (!event.content && !event.payload)) {
     return '<div class="typing-indicator"><span></span><span></span><span></span></div>';
@@ -2252,6 +2370,7 @@ async function applyMcpMode(btn) {
 
 // Preload RAG tags if starting on RAG panel
 document.addEventListener('DOMContentLoaded', () => {
+  loadRuntimeSelectors();
   // Auto-detect if marked.js loaded
   if (typeof marked === 'undefined') {
     console.warn('Marked.js not loaded, markdown rendering will use fallback');

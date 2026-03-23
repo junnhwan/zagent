@@ -295,7 +295,7 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
         return nextSection > 0 ? after.substring(0, nextSection).trim() : after.trim();
     }
 
-    static SupervisionDecision parseSupervisionDecision(String supervisionResult) {
+    public static SupervisionDecision parseSupervisionDecision(String supervisionResult) {
         SupervisionDecision jsonDecision = parseSupervisionDecisionFromJson(supervisionResult);
         if (jsonDecision != null) {
             return jsonDecision;
@@ -380,7 +380,7 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
         return nextSection > 0 ? after.substring(0, nextSection).trim() : after.trim();
     }
 
-    record SupervisionDecision(String decision, String improvement, String source) {}
+    public record SupervisionDecision(String decision, String improvement, String source) {}
 
     private String callClient(ChatClient client, String prompt, String conversationId) {
         return client.prompt(prompt)

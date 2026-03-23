@@ -26,8 +26,12 @@ public enum ClientTypeEnum {
     TOOL_MCP("tool_mcp"),
     /** Flow策略 - 规划客户端 */
     PLANNING("planning"),
+    /** Plan-and-Execute策略 - 重新规划客户端 */
+    REPLANNING("replanning"),
     /** Flow策略 - 执行客户端 */
-    EXECUTOR("executor");
+    EXECUTOR("executor"),
+    /** ReAct策略 - 推理决策客户端 */
+    REACTOR("reactor");
 
     private final String code;
 

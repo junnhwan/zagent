@@ -18,7 +18,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Flow策略 - MCP工具驱动编排（工具分析→规划→解析→执行）。
+ * Plan-and-Execute策略 - MCP工具驱动编排（工具分析→规划→解析→执行→可选重规划）。
  * <p>参考ai-agent-station-study的FlowAgentExecuteStrategy, 完整实现:
  * <ol>
  *   <li>工具分析(TOOL_MCP): 详细分析可用MCP工具的能力和适用场景</li>
@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
  * @author zagent
  */
 @Slf4j
-@Service("flowExecuteStrategy")
+@Service("planAndExecuteExecuteStrategy")
 public class FlowExecuteStrategy implements IExecuteStrategy {
 
     @Resource
@@ -80,7 +80,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
             """;
 
     private static final String DEFAULT_PLANNING_PROMPT = """
-            # 智能执行计划生成
+            # Plan-and-Execute 执行计划生成
 
             ## 用户需求分析
             **完整用户请求：**
@@ -134,6 +134,36 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
             现在请直接输出执行计划 JSON：
             """;
 
+    private static final String DEFAULT_REPLANNING_PROMPT = """
+            你是一个 Plan-and-Execute 重规划器。
+
+            用户原始请求：
+            %s
+
+            原计划：
+            %s
+
+            已有执行结果：
+            %s
+
+            失败步骤：
+            %s
+
+            请仅针对剩余任务重新规划，并只输出合法 JSON：
+            {
+              "summary": "重规划思路",
+              "steps": [
+                {
+                  "step": 1,
+                  "goal": "步骤目标",
+                  "tool": "建议工具名，没有则填 none",
+                  "dependsOn": [],
+                  "instruction": "明确执行指令"
+                }
+              ]
+            }
+            """;
+
     private static final String DEFAULT_STEP_EXECUTION_PROMPT = """
             你是一个智能执行助手，需要执行以下步骤:
 
@@ -177,34 +207,35 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         String mcpAnalysisPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.TOOL_MCP.getCode(), DEFAULT_MCP_ANALYSIS_PROMPT);
         String planningPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.PLANNING.getCode(), DEFAULT_PLANNING_PROMPT);
         String stepExecutionPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.EXECUTOR.getCode(), DEFAULT_STEP_EXECUTION_PROMPT);
+        String replanningPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.REPLANNING.getCode(), DEFAULT_REPLANNING_PROMPT);
 
         // === 阶段1: MCP工具分析 ===
         String toolAnalysis = "";
         String mcpClientId = clientTypeMap.get(ClientTypeEnum.TOOL_MCP.getCode());
         if (mcpClientId != null) {
-            log.info("Flow策略 - 开始MCP工具分析");
+            log.info("Plan-and-Execute策略 - 开始MCP工具分析");
             ChatClient mcpClient = aiClientAssemblyService.getOrBuildChatClient(mcpClientId);
             String prompt = String.format(mcpAnalysisPrompt, userInput);
             sendStageEvent(emitter, "tool_analysis", "active", 1, 0, null, context.getConversationId());
             toolAnalysis = callClient(mcpClient, prompt, context.getConversationId());
             sendStageEvent(emitter, "tool_analysis", "done", 1, 0, toolAnalysis, context.getConversationId());
-            log.info("Flow策略 - 工具分析完成");
+            log.info("Plan-and-Execute策略 - 工具分析完成");
         }
 
         // === 阶段2: 制定执行计划 ===
         String planResult = "";
         String planningClientId = clientTypeMap.get(ClientTypeEnum.PLANNING.getCode());
         if (planningClientId != null) {
-            log.info("Flow策略 - 开始制定执行计划");
+            log.info("Plan-and-Execute策略 - 开始制定执行计划");
             ChatClient planningClient = aiClientAssemblyService.getOrBuildChatClient(planningClientId);
             String prompt = String.format(planningPrompt, userInput, toolAnalysis)
                     + "\n\n## 步数限制\n最多规划 " + context.getMaxStep() + " 步，严禁输出超过该数量的执行步骤。";
             sendStageEvent(emitter, "planning", "active", 2, 0, null, context.getConversationId());
             planResult = callClient(planningClient, prompt, context.getConversationId());
-            log.info("Flow策略 - 规划原文预览: {}", abbreviateForLog(planResult));
+            log.info("Plan-and-Execute策略 - 规划原文预览: {}", abbreviateForLog(planResult));
             sendStageEvent(emitter, "planning", "done", 2, 0, planResult,
                     buildPlanningPayload(planResult, context.getMaxStep()), context.getConversationId());
-            log.info("Flow策略 - 规划完成");
+            log.info("Plan-and-Execute策略 - 规划完成");
         }
 
         // === 阶段3: 解析执行计划为步骤列表（纯Java，无LLM调用） ===
@@ -213,7 +244,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
             stepsMap.put(1, planResult.isEmpty() ? userInput : planResult);
         }
         stepsMap = limitExecutionSteps(stepsMap, context.getMaxStep());
-        log.info("Flow策略 - 解析出{}个执行步骤", stepsMap.size());
+        log.info("Plan-and-Execute策略 - 解析出{}个执行步骤", stepsMap.size());
 
         // === 阶段4: 逐步执行 ===
         String executorClientId = clientTypeMap.get(ClientTypeEnum.EXECUTOR.getCode());
@@ -230,7 +261,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
 
         for (int stepNum : sortedSteps) {
             String stepContent = stepsMap.get(stepNum);
-            log.info("Flow策略 - 执行第{}步", stepNum);
+            log.info("Plan-and-Execute策略 - 执行第{}步", stepNum);
 
             String previousResults = allResults.isEmpty() ? "" : "**前序步骤执行结果:**\n" + allResults;
             String prompt = String.format(stepExecutionPrompt, stepContent, userInput, previousResults);
@@ -243,12 +274,30 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
                         ? stepResult.substring(0, 500) + "...(已截断)"
                         : stepResult;
                 sendStageEvent(emitter, "step_execution", "done", stepNum, totalExecSteps, sseContent, context.getConversationId());
-                log.info("Flow策略 - 第{}步执行成功", stepNum);
+                log.info("Plan-and-Execute策略 - 第{}步执行成功", stepNum);
             } catch (Exception e) {
                 String errorMsg = String.format("第%d步执行失败: %s", stepNum, e.getMessage());
                 allResults.append(errorMsg).append("\n\n");
                 sendStageEvent(emitter, "step_execution", "error", stepNum, totalExecSteps, errorMsg, context.getConversationId());
-                log.error("Flow策略 - 第{}步执行失败", stepNum, e);
+                log.error("Plan-and-Execute策略 - 第{}步执行失败", stepNum, e);
+
+                String replanningClientId = clientTypeMap.get(ClientTypeEnum.REPLANNING.getCode());
+                if (replanningClientId != null) {
+                    log.info("Plan-and-Execute策略 - 触发重规划, failureStep={}", stepNum);
+                    sendStageEvent(emitter, "replanning", "active", stepNum, totalExecSteps, errorMsg, context.getConversationId());
+                    try {
+                        ChatClient replanningClient = aiClientAssemblyService.getOrBuildChatClient(replanningClientId);
+                        String replanPrompt = String.format(replanningPrompt, userInput, planResult, allResults, stepContent);
+                        String replanResult = callClient(replanningClient, replanPrompt, context.getConversationId());
+                        log.info("Plan-and-Execute策略 - 重规划结果预览: {}", abbreviateForLog(replanResult));
+                        sendStageEvent(emitter, "replanning", "done", stepNum, totalExecSteps, replanResult,
+                                buildPlanningPayload(replanResult, context.getMaxStep()), context.getConversationId());
+                    } catch (Exception replanningException) {
+                        log.warn("Plan-and-Execute策略 - 重规划失败: {}", replanningException.getMessage());
+                        sendStageEvent(emitter, "replanning", "error", stepNum, totalExecSteps,
+                                "重规划失败: " + replanningException.getMessage(), context.getConversationId());
+                    }
+                }
             }
 
             // 步骤间限流
@@ -273,7 +322,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
     /**
      * 限制最终执行步数，避免规划结果无限扩张。
      */
-    static Map<Integer, String> limitExecutionSteps(Map<Integer, String> sourceSteps, int maxStep) {
+    public static Map<Integer, String> limitExecutionSteps(Map<Integer, String> sourceSteps, int maxStep) {
         if (sourceSteps == null || sourceSteps.isEmpty()) {
             return Collections.emptyMap();
         }
@@ -289,14 +338,14 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
     private Map<Integer, String> parseExecutionSteps(String planText) {
         Map<Integer, String> jsonSteps = parseExecutionStepsFromJson(planText);
         if (!jsonSteps.isEmpty()) {
-            log.info("Flow策略 - 计划解析方式: json, steps={}", jsonSteps.size());
+            log.info("Plan-and-Execute策略 - 计划解析方式: json, steps={}", jsonSteps.size());
             return jsonSteps;
         }
 
-        log.warn("Flow规划结果未通过JSON解析，回退到文本正则解析");
+        log.warn("Plan-and-Execute规划结果未通过JSON解析，回退到文本正则解析");
         Map<Integer, String> textSteps = parseExecutionStepsFromText(planText);
         if (!textSteps.isEmpty()) {
-            log.info("Flow策略 - 计划解析方式: text-fallback, steps={}", textSteps.size());
+            log.info("Plan-and-Execute策略 - 计划解析方式: text-fallback, steps={}", textSteps.size());
         }
         return textSteps;
     }
@@ -313,7 +362,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
 
             JSONArray stepArray = root.getJSONArray("steps");
             if (stepArray == null || stepArray.isEmpty()) {
-                log.warn("Flow规划JSON缺少有效的 steps 数组");
+                log.warn("Plan-and-Execute规划JSON缺少有效的 steps 数组");
                 return Collections.emptyMap();
             }
 
@@ -352,10 +401,10 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
                         stepNum, goal, tool, dependsOnText, instruction
                 ));
             }
-            log.info("Flow策略 - JSON规划校验通过: steps={}", steps.keySet());
+            log.info("Plan-and-Execute策略 - JSON规划校验通过: steps={}", steps.keySet());
             return steps;
         } catch (Exception exception) {
-            log.warn("Flow规划JSON解析失败: {}", exception.getMessage());
+            log.warn("Plan-and-Execute规划JSON解析失败: {}", exception.getMessage());
             return Collections.emptyMap();
         }
     }
@@ -392,7 +441,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         return steps;
     }
 
-    static String extractJsonObject(String text) {
+    public static String extractJsonObject(String text) {
         if (text == null) {
             return null;
         }
@@ -434,13 +483,20 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
     }
 
     private String callClient(ChatClient client, String prompt, String conversationId) {
-        return client.prompt(prompt)
+        return client.prompt(escapeTemplateBraces(prompt))
                 .system(s -> s.param("current_date", LocalDate.now().toString()))
                 .advisors(a -> a
                         .param("chat_memory_conversation_id", conversationId)
                         .param("chat_memory_response_size", 1024))
                 .call()
                 .content();
+    }
+
+    public static String escapeTemplateBraces(String prompt) {
+        if (prompt == null || prompt.isEmpty()) {
+            return prompt;
+        }
+        return prompt.replace("{", "\\{").replace("}", "\\}");
     }
 
     private void sendStageEvent(SseEmitter emitter, String stage, String status, int step, int totalSteps, String content, String sessionId) {

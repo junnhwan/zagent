@@ -1,5 +1,6 @@
 package io.wanjune.zagent.chat.assembly;
 
+import io.wanjune.zagent.chat.assembly.model.AssembledAiClient;
 import io.wanjune.zagent.model.dto.McpRuntimeState;
 import org.springframework.ai.chat.client.ChatClient;
 
@@ -19,6 +20,8 @@ public interface AiClientAssemblyService {
      * @return 组装完成的 {@link ChatClient} 实例
      */
     ChatClient getOrBuildChatClient(String clientId);
+
+    AssembledAiClient getOrBuildAssembledClient(String clientId);
 
     /**
      * 使指定clientId的缓存失效, 下次访问时强制重建。

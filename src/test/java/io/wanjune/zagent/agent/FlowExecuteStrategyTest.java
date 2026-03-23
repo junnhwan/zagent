@@ -88,6 +88,24 @@ class FlowExecuteStrategyTest {
         assertThat(steps.get(2)).contains("第2步：整理输出");
     }
 
+    @Test
+    void extractJsonObjectSupportsPlainJson() {
+        String json = "{\"summary\":\"ok\",\"steps\":[{\"step\":1,\"goal\":\"g\",\"tool\":\"t\",\"dependsOn\":[],\"instruction\":\"i\"}]}";
+
+        String extracted = FlowExecuteStrategy.extractJsonObject(json);
+
+        assertThat(extracted).isEqualTo(json);
+    }
+
+    @Test
+    void escapeTemplateBracesEscapesJsonPrompt() {
+        String prompt = "请输出 JSON: {\"summary\":\"整体思路\",\"steps\":[]}";
+
+        String escaped = FlowExecuteStrategy.escapeTemplateBraces(prompt);
+
+        assertThat(escaped).contains("\\{", "\\}");
+    }
+
     @SuppressWarnings("unchecked")
     private Map<Integer, String> invokeParseExecutionSteps(String planText) {
         try {

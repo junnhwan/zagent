@@ -110,7 +110,7 @@ public class RagServiceImpl implements RagService {
         return new RagContextAdvisor(vectorStore, searchBuilder.build());
     }
 
-    static String summarizeSplitDocuments(List<Document> splitDocs) {
+    public static String summarizeSplitDocuments(List<Document> splitDocs) {
         if (splitDocs == null || splitDocs.isEmpty()) {
             return "chunks=0";
         }

@@ -1,7 +1,6 @@
-package io.wanjune.zagent.mcp.impl;
+package io.wanjune.zagent.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.wanjune.zagent.mcp.McpConfigSyncService;
 import io.wanjune.zagent.model.dto.McpSyncManifest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;

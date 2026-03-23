@@ -1,9 +1,8 @@
-package io.wanjune.zagent.mcp.impl;
+package io.wanjune.zagent.mcp;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import io.modelcontextprotocol.client.transport.ServerParameters;
-import io.wanjune.zagent.mcp.McpTransportConfigParser;
 import io.wanjune.zagent.model.dto.SseTransportConfig;
 import io.wanjune.zagent.model.dto.StdioTransportConfig;
 import org.springframework.stereotype.Service;
@@ -64,7 +63,7 @@ public class McpTransportConfigParserImpl implements McpTransportConfigParser {
         return builder.build();
     }
 
-    static String normalizeSseBaseUri(String baseUri) {
+    public static String normalizeSseBaseUri(String baseUri) {
         if (baseUri == null || baseUri.isBlank()) {
             throw new IllegalArgumentException("baseUri must not be blank");
         }
@@ -75,7 +74,7 @@ public class McpTransportConfigParserImpl implements McpTransportConfigParser {
         return normalized;
     }
 
-    static String normalizeSseEndpoint(String sseEndpoint) {
+    public static String normalizeSseEndpoint(String sseEndpoint) {
         if (sseEndpoint == null || sseEndpoint.isBlank()) {
             return "/sse";
         }

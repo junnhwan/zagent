@@ -1,8 +1,7 @@
-package io.wanjune.zagent.mcp.impl;
+package io.wanjune.zagent.mcp;
 
 import io.wanjune.zagent.common.Constants;
 import io.wanjune.zagent.mapper.AiClientConfigMapper;
-import io.wanjune.zagent.mcp.McpBindingResolver;
 import io.wanjune.zagent.model.dto.AiClientBindingResolution;
 import io.wanjune.zagent.model.entity.AiClientConfig;
 import org.springframework.stereotype.Service;
