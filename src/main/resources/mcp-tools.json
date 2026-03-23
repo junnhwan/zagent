@@ -17,6 +17,12 @@
     "modelName" : "gpt-5.4",
     "modelType" : "openai",
     "status" : 1
+  }, {
+    "modelId" : "2006",
+    "apiId" : "1001",
+    "modelName" : "gpt-5.4",
+    "modelType" : "openai",
+    "status" : 1
   } ],
   "mcps" : [ {
     "mcpId" : "5001",
@@ -39,6 +45,13 @@
     "transportConfig" : "{\"baseUri\":\"${zagent.mcp.amap.base-uri:http://127.0.0.1:18081}\",\"sseEndpoint\":\"${zagent.mcp.amap.sse-endpoint:/sse}\"}",
     "requestTimeout" : 20,
     "status" : 1
+  }, {
+    "mcpId" : "5004",
+    "mcpName" : "git-repo",
+    "transportType" : "sse",
+    "transportConfig" : "{\"baseUri\":\"${zagent.mcp.git-repo.base-uri:http://127.0.0.1:18082}\",\"sseEndpoint\":\"${zagent.mcp.git-repo.sse-endpoint:/sse}\"}",
+    "requestTimeout" : 10,
+    "status" : 1
   } ],
   "bindings" : [ {
     "sourceType" : "model",
@@ -59,6 +72,13 @@
     "sourceId" : "2005",
     "targetType" : "tool_mcp",
     "targetIds" : [ "5003" ],
+    "extParam" : null,
+    "status" : 1
+  }, {
+    "sourceType" : "model",
+    "sourceId" : "2006",
+    "targetType" : "tool_mcp",
+    "targetIds" : [ "5004" ],
     "extParam" : null,
     "status" : 1
   }, {
