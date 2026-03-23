@@ -7,11 +7,16 @@ import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.publisher.Flux;
 
 import java.time.LocalDate;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Auto策略 - 智能编排（分析→执行→监督→总结）。
@@ -157,7 +162,8 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
                 String historyText = executionHistory.isEmpty() ? "[首次执行]" : executionHistory.toString();
                 String prompt = String.format(analyzerPrompt, userMessage, step, maxStep, historyText, currentTask);
                 sendStageEvent(emitter, "analysis", "active", step, maxStep, null, context.getConversationId());
-                analysisResult = callClient(analyzerClient, prompt, context.getConversationId());
+                analysisResult = callClientStream(analyzerClient, prompt, context.getConversationId(),
+                        emitter, "analysis", step, maxStep);
                 sendStageEvent(emitter, "analysis", "done", step, maxStep, analysisResult, context.getConversationId());
                 log.info("Auto策略 - 第{}轮分析完成", step);
 
@@ -175,7 +181,8 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
                 ChatClient executorClient = aiClientAssemblyService.getOrBuildChatClient(executorClientId);
                 String prompt = String.format(executorPrompt, userMessage, analysisResult);
                 sendStageEvent(emitter, "execution", "active", step, maxStep, null, context.getConversationId());
-                executionResult = callClient(executorClient, prompt, context.getConversationId());
+                executionResult = callClientStream(executorClient, prompt, context.getConversationId(),
+                        emitter, "execution", step, maxStep);
                 sendStageEvent(emitter, "execution", "done", step, maxStep, executionResult, context.getConversationId());
 
                 // 追加执行历史
@@ -190,7 +197,8 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
                 ChatClient supervisorClient = aiClientAssemblyService.getOrBuildChatClient(supervisorClientId);
                 String prompt = String.format(supervisorPrompt, userMessage, executionResult);
                 sendStageEvent(emitter, "supervision", "active", step, maxStep, null, context.getConversationId());
-                String supervisionResult = callClient(supervisorClient, prompt, context.getConversationId());
+                String supervisionResult = callClientStream(supervisorClient, prompt, context.getConversationId(),
+                        emitter, "supervision", step, maxStep);
                 sendStageEvent(emitter, "supervision", "done", step, maxStep, supervisionResult, context.getConversationId());
                 log.info("Auto策略 - 第{}轮监督完成", step);
 
@@ -226,7 +234,8 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
             String prompt = isCompleted
                     ? String.format(summaryPrompts[0], userMessage, executionHistory)
                     : String.format(summaryPrompts[1], userMessage, executionHistory);
-            finalOutput = callClient(summaryClient, prompt, context.getConversationId());
+            finalOutput = callClientStream(summaryClient, prompt, context.getConversationId(),
+                    emitter, "summary", 0, maxStep);
         } else {
             finalOutput = executionHistory.toString();
         }
@@ -390,6 +399,84 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
                         .param("chat_memory_response_size", 1024))
                 .call()
                 .content();
+    }
+
+    /**
+     * 流式调用ChatClient, 每个token实时推送SSE事件。
+     * <p>当emitter为null时退化为同步调用callClient。</p>
+     *
+     * @param client      ChatClient实例
+     * @param prompt      提示词
+     * @param conversationId 会话ID
+     * @param emitter     SSE发射器
+     * @param stage       当前阶段名称
+     * @param step        当前轮次
+     * @param totalSteps  总步骤数
+     * @return 完整的响应文本（所有token拼接）
+     */
+    private String callClientStream(ChatClient client, String prompt, String conversationId,
+                                    SseEmitter emitter, String stage, int step, int totalSteps) {
+        if (emitter == null) {
+            return callClient(client, prompt, conversationId);
+        }
+
+        StringBuilder result = new StringBuilder();
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<Throwable> errorRef = new AtomicReference<>();
+
+        Flux<ChatClientResponse> flux = client.prompt(prompt)
+                .system(s -> s.param("current_date", LocalDate.now().toString()))
+                .advisors(a -> a
+                        .param("chat_memory_conversation_id", conversationId)
+                        .param("chat_memory_response_size", 1024))
+                .stream()
+                .chatClientResponse();
+
+        flux.subscribe(
+                response -> {
+                    try {
+                        String text = response.chatResponse() != null
+                                && response.chatResponse().getResult() != null
+                                && response.chatResponse().getResult().getOutput() != null
+                                ? response.chatResponse().getResult().getOutput().getText()
+                                : null;
+                        if (text != null && !text.isEmpty()) {
+                            result.append(text);
+                            StageEvent tokenEvent = StageEvent.builder()
+                                    .type("token").stage(stage).status("active")
+                                    .step(step).totalSteps(totalSteps)
+                                    .content(text).sessionId(conversationId).build();
+                            emitter.send(SseEmitter.event()
+                                    .data(com.alibaba.fastjson.JSON.toJSONString(tokenEvent)));
+                        }
+                    } catch (Exception e) {
+                        log.error("发送token事件失败", e);
+                    }
+                },
+                error -> {
+                    log.error("流式调用异常, stage={}", stage, error);
+                    errorRef.set(error);
+                    latch.countDown();
+                },
+                latch::countDown
+        );
+
+        try {
+            if (!latch.await(5, TimeUnit.MINUTES)) {
+                log.warn("流式调用超时, stage={}", stage);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("流式调用等待被中断, stage={}", stage, e);
+        }
+
+        // 流式异常时降级为同步调用
+        if (errorRef.get() != null && result.isEmpty()) {
+            log.warn("流式调用失败, 降级为同步调用, stage={}", stage);
+            return callClient(client, prompt, conversationId);
+        }
+
+        return result.toString();
     }
 
     private void sendStageEvent(SseEmitter emitter, String stage, String status, int step, int totalSteps, String content, String sessionId) {

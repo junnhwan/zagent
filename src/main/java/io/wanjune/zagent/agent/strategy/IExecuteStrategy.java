@@ -55,6 +55,9 @@ public interface IExecuteStrategy {
     @NoArgsConstructor
     @AllArgsConstructor
     class StageEvent {
+        /** 事件类型: stage(阶段事件)/token(流式token) */
+        @Builder.Default
+        private String type = "stage";
         /** 阶段名称: analysis/execution/supervision/summary/plan/step_execution/tool_analysis/complete */
         private String stage;
         /** 事件状态: active(进行中)/done(完成)/error(失败) */
