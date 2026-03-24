@@ -1,39 +1,29 @@
 package io.wanjune.zagent.agent.strategy.impl;
 
 import io.wanjune.zagent.agent.strategy.IExecuteStrategy;
+import io.wanjune.zagent.agent.strategy.support.AutoSupervisionParser;
+import io.wanjune.zagent.agent.strategy.support.StrategyHelper;
 import io.wanjune.zagent.model.enums.ClientTypeEnum;
 import io.wanjune.zagent.chat.assembly.AiClientAssemblyService;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import reactor.core.publisher.Flux;
 
-import java.time.LocalDate;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Auto策略 - 智能编排（分析→执行→监督→总结）。
- * <p>参考ai-agent-station-study的AutoAgentExecuteStrategy, 实现完整循环状态机:
- * <ol>
- *   <li>分析(TASK_ANALYZER): 深入分析任务, 制定执行策略, 支持提前完成检测</li>
- *   <li>执行(PRECISION_EXECUTOR): 按分析结果精确执行任务</li>
- *   <li>监督(QUALITY_SUPERVISOR): 评估执行质量, PASS/FAIL/OPTIMIZE</li>
- *   <li>如果FAIL/OPTIMIZE, 更新任务描述后回到步骤1（关键反馈循环）</li>
- *   <li>总结(RESPONSE_ASSISTANT): 生成最终报告, 区分完成/未完成</li>
- * </ol></p>
+ * Auto策略 - 多角色分工与自我反馈的编排（分析→执行→监督→总结）。
  *
  * @author zagent
  */
 @Slf4j
 @Service("autoExecuteStrategy")
 public class AutoExecuteStrategy implements IExecuteStrategy {
+
+    private static final AutoSupervisionParser AUTO_SUPERVISION_PARSER = new AutoSupervisionParser();
 
     @Resource
     private AiClientAssemblyService aiClientAssemblyService;
@@ -147,9 +137,9 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
         String summaryClientId = clientTypeMap.get(ClientTypeEnum.RESPONSE_ASSISTANT.getCode());
 
         // 从DB加载提示词, 无则使用默认值
-        String analyzerPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.TASK_ANALYZER.getCode(), DEFAULT_ANALYZER_PROMPT);
-        String executorPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.PRECISION_EXECUTOR.getCode(), DEFAULT_EXECUTOR_PROMPT);
-        String supervisorPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.QUALITY_SUPERVISOR.getCode(), DEFAULT_SUPERVISOR_PROMPT);
+        String analyzerPrompt = StrategyHelper.getStepPrompt(stepPromptMap, ClientTypeEnum.TASK_ANALYZER.getCode(), DEFAULT_ANALYZER_PROMPT);
+        String executorPrompt = StrategyHelper.getStepPrompt(stepPromptMap, ClientTypeEnum.PRECISION_EXECUTOR.getCode(), DEFAULT_EXECUTOR_PROMPT);
+        String supervisorPrompt = StrategyHelper.getStepPrompt(stepPromptMap, ClientTypeEnum.QUALITY_SUPERVISOR.getCode(), DEFAULT_SUPERVISOR_PROMPT);
         String[] summaryPrompts = getSummaryPrompts(stepPromptMap);
 
         for (int step = 1; step <= maxStep; step++) {
@@ -161,10 +151,10 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
                 ChatClient analyzerClient = aiClientAssemblyService.getOrBuildChatClient(analyzerClientId);
                 String historyText = executionHistory.isEmpty() ? "[首次执行]" : executionHistory.toString();
                 String prompt = String.format(analyzerPrompt, userMessage, step, maxStep, historyText, currentTask);
-                sendStageEvent(emitter, "analysis", "active", step, maxStep, null, context.getConversationId());
-                analysisResult = callClientStream(analyzerClient, prompt, context.getConversationId(),
+                StrategyHelper.sendStageEvent(emitter, "analysis", "active", step, maxStep, null, context.getConversationId());
+                analysisResult = StrategyHelper.callClientStream(analyzerClient, prompt, context.getConversationId(),
                         emitter, "analysis", step, maxStep);
-                sendStageEvent(emitter, "analysis", "done", step, maxStep, analysisResult, context.getConversationId());
+                StrategyHelper.sendStageEvent(emitter, "analysis", "done", step, maxStep, analysisResult, context.getConversationId());
                 log.info("Auto策略 - 第{}轮分析完成", step);
 
                 // 检测提前完成
@@ -180,10 +170,10 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
             if (executorClientId != null) {
                 ChatClient executorClient = aiClientAssemblyService.getOrBuildChatClient(executorClientId);
                 String prompt = String.format(executorPrompt, userMessage, analysisResult);
-                sendStageEvent(emitter, "execution", "active", step, maxStep, null, context.getConversationId());
-                executionResult = callClientStream(executorClient, prompt, context.getConversationId(),
+                StrategyHelper.sendStageEvent(emitter, "execution", "active", step, maxStep, null, context.getConversationId());
+                executionResult = StrategyHelper.callClientStream(executorClient, prompt, context.getConversationId(),
                         emitter, "execution", step, maxStep);
-                sendStageEvent(emitter, "execution", "done", step, maxStep, executionResult, context.getConversationId());
+                StrategyHelper.sendStageEvent(emitter, "execution", "done", step, maxStep, executionResult, context.getConversationId());
 
                 // 追加执行历史
                 executionHistory.append(String.format(
@@ -196,17 +186,17 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
             if (supervisorClientId != null) {
                 ChatClient supervisorClient = aiClientAssemblyService.getOrBuildChatClient(supervisorClientId);
                 String prompt = String.format(supervisorPrompt, userMessage, executionResult);
-                sendStageEvent(emitter, "supervision", "active", step, maxStep, null, context.getConversationId());
-                String supervisionResult = callClientStream(supervisorClient, prompt, context.getConversationId(),
+                StrategyHelper.sendStageEvent(emitter, "supervision", "active", step, maxStep, null, context.getConversationId());
+                String supervisionResult = StrategyHelper.callClientStream(supervisorClient, prompt, context.getConversationId(),
                         emitter, "supervision", step, maxStep);
-                sendStageEvent(emitter, "supervision", "done", step, maxStep, supervisionResult, context.getConversationId());
+                StrategyHelper.sendStageEvent(emitter, "supervision", "done", step, maxStep, supervisionResult, context.getConversationId());
                 log.info("Auto策略 - 第{}轮监督完成", step);
 
                 // 判断质量并更新任务（关键反馈循环）
-                log.info("Auto策略 - 监督原文预览: {}", abbreviateForLog(supervisionResult));
+                log.info("Auto策略 - 监督原文预览: {}", StrategyHelper.abbreviateForLog(supervisionResult));
                 SupervisionDecision decision = parseSupervisionDecision(supervisionResult);
                 log.info("Auto策略 - 监督解析方式: {}, decision={}, improvement={}",
-                        decision.source(), decision.decision(), abbreviateForLog(decision.improvement()));
+                        decision.source(), decision.decision(), StrategyHelper.abbreviateForLog(decision.improvement()));
 
                 if ("PASS".equals(decision.decision())) {
                     log.info("Auto策略 - 第{}轮质量通过", step);
@@ -227,31 +217,22 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
         }
 
         // === 阶段4: 总结 ===
-        sendStageEvent(emitter, "summary", "active", 0, maxStep, null, context.getConversationId());
+        StrategyHelper.sendStageEvent(emitter, "summary", "active", 0, maxStep, null, context.getConversationId());
         String finalOutput;
         if (summaryClientId != null) {
             ChatClient summaryClient = aiClientAssemblyService.getOrBuildChatClient(summaryClientId);
             String prompt = isCompleted
                     ? String.format(summaryPrompts[0], userMessage, executionHistory)
                     : String.format(summaryPrompts[1], userMessage, executionHistory);
-            finalOutput = callClientStream(summaryClient, prompt, context.getConversationId(),
+            finalOutput = StrategyHelper.callClientStream(summaryClient, prompt, context.getConversationId(),
                     emitter, "summary", 0, maxStep);
         } else {
             finalOutput = executionHistory.toString();
         }
 
-        sendStageEvent(emitter, "summary", "done", 0, maxStep, finalOutput, context.getConversationId());
-        sendStageEvent(emitter, "complete", "done", 0, maxStep, "执行完成", context.getConversationId());
+        StrategyHelper.sendStageEvent(emitter, "summary", "done", 0, maxStep, finalOutput, context.getConversationId());
+        StrategyHelper.sendStageEvent(emitter, "complete", "done", 0, maxStep, "执行完成", context.getConversationId());
         return finalOutput;
-    }
-
-    /**
-     * 从stepPromptMap获取指定角色的提示词, DB未配置时返回默认值
-     */
-    private String getStepPrompt(Map<String, String> stepPromptMap, String clientType, String defaultPrompt) {
-        if (stepPromptMap == null) return defaultPrompt;
-        String dbPrompt = stepPromptMap.get(clientType);
-        return (dbPrompt != null && !dbPrompt.isBlank()) ? dbPrompt : defaultPrompt;
     }
 
     /**
@@ -286,209 +267,10 @@ public class AutoExecuteStrategy implements IExecuteStrategy {
         return new String[]{dbPrompt, DEFAULT_SUMMARY_INCOMPLETE_PROMPT};
     }
 
-    /**
-     * 从AI输出中提取指定段落内容
-     */
-    private String extractSection(String text, String sectionHeader) {
-        int idx = text.indexOf(sectionHeader);
-        if (idx < 0) return "";
-        String after = text.substring(idx + sectionHeader.length()).trim();
-        // 截取到下一个段落头或结尾
-        int nextSection = after.indexOf("\n");
-        for (String header : new String[]{"需求匹配度:", "内容完整性:", "问题识别:", "质量评分:", "是否通过:"}) {
-            int pos = after.indexOf(header);
-            if (pos > 0 && (nextSection < 0 || pos < nextSection)) {
-                nextSection = pos;
-            }
-        }
-        return nextSection > 0 ? after.substring(0, nextSection).trim() : after.trim();
-    }
-
     public static SupervisionDecision parseSupervisionDecision(String supervisionResult) {
-        SupervisionDecision jsonDecision = parseSupervisionDecisionFromJson(supervisionResult);
-        if (jsonDecision != null) {
-            return jsonDecision;
-        }
-
-        String improvement = extractSectionStatic(supervisionResult, "改进建议:");
-        if (supervisionResult != null) {
-            if (supervisionResult.contains("是否通过: PASS") || supervisionResult.contains("PASS")) {
-                return new SupervisionDecision("PASS", improvement, "text-fallback");
-            }
-            if (supervisionResult.contains("是否通过: FAIL") || supervisionResult.contains("FAIL")) {
-                return new SupervisionDecision("FAIL", improvement, "text-fallback");
-            }
-            if (supervisionResult.contains("OPTIMIZE")) {
-                return new SupervisionDecision("OPTIMIZE", improvement, "text-fallback");
-            }
-        }
-        return new SupervisionDecision("PASS", improvement, "text-fallback-default");
-    }
-
-    private static SupervisionDecision parseSupervisionDecisionFromJson(String supervisionResult) {
-        if (supervisionResult == null || supervisionResult.isBlank()) {
-            return null;
-        }
-        try {
-            JSONObject json = JSONObject.parseObject(extractJsonObject(supervisionResult));
-            if (json == null) {
-                return null;
-            }
-            String decision = trimToEmpty(json.getString("decision")).toUpperCase();
-            String improvement = trimToEmpty(json.getString("improvement"));
-            if (!("PASS".equals(decision) || "FAIL".equals(decision) || "OPTIMIZE".equals(decision))) {
-                throw new IllegalArgumentException("decision 非法: " + decision);
-            }
-            if (improvement.isBlank()) {
-                throw new IllegalArgumentException("improvement 不能为空");
-            }
-            return new SupervisionDecision(decision, improvement, "json");
-        } catch (Exception exception) {
-            log.warn("Auto监督JSON解析失败: {}", exception.getMessage());
-            return null;
-        }
-    }
-
-    static String extractJsonObject(String text) {
-        if (text == null) {
-            return null;
-        }
-        String trimmed = text.trim();
-        int start = trimmed.indexOf('{');
-        int end = trimmed.lastIndexOf('}');
-        if (start < 0 || end < start) {
-            return trimmed;
-        }
-        return trimmed.substring(start, end + 1);
-    }
-
-    private static String trimToEmpty(String value) {
-        return value == null ? "" : value.trim();
-    }
-
-    private String abbreviateForLog(String text) {
-        if (text == null) {
-            return "<null>";
-        }
-        String normalized = text.replaceAll("\s+", " ").trim();
-        return normalized.length() > 200 ? normalized.substring(0, 200) + "...(截断)" : normalized;
-    }
-
-    private static String extractSectionStatic(String text, String sectionHeader) {
-        if (text == null) return "";
-        int idx = text.indexOf(sectionHeader);
-        if (idx < 0) return "";
-        String after = text.substring(idx + sectionHeader.length()).trim();
-        int nextSection = after.indexOf("\n");
-        for (String header : new String[]{"需求匹配度:", "内容完整性:", "问题识别:", "质量评分:", "是否通过:"}) {
-            int pos = after.indexOf(header);
-            if (pos > 0 && (nextSection < 0 || pos < nextSection)) {
-                nextSection = pos;
-            }
-        }
-        return nextSection > 0 ? after.substring(0, nextSection).trim() : after.trim();
+        return AUTO_SUPERVISION_PARSER.parseSupervisionDecision(supervisionResult);
     }
 
     public record SupervisionDecision(String decision, String improvement, String source) {}
-
-    private String callClient(ChatClient client, String prompt, String conversationId) {
-        return client.prompt(prompt)
-                .system(s -> s.param("current_date", LocalDate.now().toString()))
-                .advisors(a -> a
-                        .param("chat_memory_conversation_id", conversationId)
-                        .param("chat_memory_response_size", 1024))
-                .call()
-                .content();
-    }
-
-    /**
-     * 流式调用ChatClient, 每个token实时推送SSE事件。
-     * <p>当emitter为null时退化为同步调用callClient。</p>
-     *
-     * @param client      ChatClient实例
-     * @param prompt      提示词
-     * @param conversationId 会话ID
-     * @param emitter     SSE发射器
-     * @param stage       当前阶段名称
-     * @param step        当前轮次
-     * @param totalSteps  总步骤数
-     * @return 完整的响应文本（所有token拼接）
-     */
-    private String callClientStream(ChatClient client, String prompt, String conversationId,
-                                    SseEmitter emitter, String stage, int step, int totalSteps) {
-        if (emitter == null) {
-            return callClient(client, prompt, conversationId);
-        }
-
-        StringBuilder result = new StringBuilder();
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<Throwable> errorRef = new AtomicReference<>();
-
-        Flux<ChatClientResponse> flux = client.prompt(prompt)
-                .system(s -> s.param("current_date", LocalDate.now().toString()))
-                .advisors(a -> a
-                        .param("chat_memory_conversation_id", conversationId)
-                        .param("chat_memory_response_size", 1024))
-                .stream()
-                .chatClientResponse();
-
-        flux.subscribe(
-                response -> {
-                    try {
-                        String text = response.chatResponse() != null
-                                && response.chatResponse().getResult() != null
-                                && response.chatResponse().getResult().getOutput() != null
-                                ? response.chatResponse().getResult().getOutput().getText()
-                                : null;
-                        if (text != null && !text.isEmpty()) {
-                            result.append(text);
-                            StageEvent tokenEvent = StageEvent.builder()
-                                    .type("token").stage(stage).status("active")
-                                    .step(step).totalSteps(totalSteps)
-                                    .content(text).sessionId(conversationId).build();
-                            emitter.send(SseEmitter.event()
-                                    .data(com.alibaba.fastjson.JSON.toJSONString(tokenEvent)));
-                        }
-                    } catch (Exception e) {
-                        log.error("发送token事件失败", e);
-                    }
-                },
-                error -> {
-                    log.error("流式调用异常, stage={}", stage, error);
-                    errorRef.set(error);
-                    latch.countDown();
-                },
-                latch::countDown
-        );
-
-        try {
-            if (!latch.await(5, TimeUnit.MINUTES)) {
-                log.warn("流式调用超时, stage={}", stage);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("流式调用等待被中断, stage={}", stage, e);
-        }
-
-        // 流式异常时降级为同步调用
-        if (errorRef.get() != null && result.isEmpty()) {
-            log.warn("流式调用失败, 降级为同步调用, stage={}", stage);
-            return callClient(client, prompt, conversationId);
-        }
-
-        return result.toString();
-    }
-
-    private void sendStageEvent(SseEmitter emitter, String stage, String status, int step, int totalSteps, String content, String sessionId) {
-        if (emitter == null) return;
-        try {
-            StageEvent event = StageEvent.builder()
-                    .stage(stage).status(status).step(step).totalSteps(totalSteps)
-                    .content(content).sessionId(sessionId).build();
-            emitter.send(SseEmitter.event().data(com.alibaba.fastjson.JSON.toJSONString(event)));
-        } catch (Exception e) {
-            log.error("发送SSE事件失败", e);
-        }
-    }
 
 }

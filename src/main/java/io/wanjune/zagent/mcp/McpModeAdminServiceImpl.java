@@ -13,11 +13,9 @@ import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -176,7 +174,7 @@ public class McpModeAdminServiceImpl implements McpModeAdminService {
     private McpSyncManifest loadManifest() {
         try {
             String rawJson = Files.readString(resolveWritableConfigPath(), StandardCharsets.UTF_8);
-            return objectMapper.readValue(stripUtf8Bom(rawJson), McpSyncManifest.class);
+            return objectMapper.readValue(McpConfigUtils.stripUtf8Bom(rawJson), McpSyncManifest.class);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read MCP config file", e);
         }
@@ -193,15 +191,9 @@ public class McpModeAdminServiceImpl implements McpModeAdminService {
 
     private Path resolveWritableConfigPath() {
         try {
-            if (StringUtils.startsWith(configLocation, "file:")) {
-                return Paths.get(URI.create(configLocation));
-            }
-            if (StringUtils.startsWith(configLocation, "classpath:")) {
-                String relativePath = StringUtils.removeStart(configLocation, "classpath:");
-                Path sourcePath = Paths.get("src", "main", "resources", relativePath);
-                if (Files.exists(sourcePath)) {
-                    return sourcePath;
-                }
+            Path path = McpConfigUtils.tryResolveWritableConfigPath(configLocation);
+            if (path != null) {
+                return path;
             }
             Resource resource = resourceLoader.getResource(configLocation);
             return resource.getFile().toPath();
@@ -212,13 +204,6 @@ public class McpModeAdminServiceImpl implements McpModeAdminService {
 
     private String normalizeMode(String mode) {
         return StringUtils.trimToEmpty(mode).toLowerCase();
-    }
-
-    private String stripUtf8Bom(String content) {
-        if (content != null && !content.isEmpty() && content.charAt(0) == '\uFEFF') {
-            return content.substring(1);
-        }
-        return content;
     }
 
     private List<McpSyncManifest.BindingConfig> safeList(List<McpSyncManifest.BindingConfig> bindings) {

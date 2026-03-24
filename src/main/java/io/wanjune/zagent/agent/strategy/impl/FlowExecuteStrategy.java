@@ -3,34 +3,23 @@ package io.wanjune.zagent.agent.strategy.impl;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import io.wanjune.zagent.agent.strategy.support.FlowPlanParser;
+import io.wanjune.zagent.agent.strategy.support.StrategyHelper;
 import io.wanjune.zagent.agent.strategy.IExecuteStrategy;
 import io.wanjune.zagent.model.enums.ClientTypeEnum;
 import io.wanjune.zagent.chat.assembly.AiClientAssemblyService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import reactor.core.publisher.Flux;
 
-import java.time.LocalDate;
 import java.util.*;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Plan-and-Execute策略 - MCP工具驱动编排（工具分析→规划→解析→执行→可选重规划）。
- * <p>参考ai-agent-station-study的FlowAgentExecuteStrategy, 完整实现:
- * <ol>
- *   <li>工具分析(TOOL_MCP): 详细分析可用MCP工具的能力和适用场景</li>
- *   <li>规划(PLANNING): 基于工具能力制定结构化执行计划</li>
- *   <li>解析: 将计划解析为可执行的步骤列表（纯Java，无LLM调用）</li>
- *   <li>逐步执行(EXECUTOR): 按计划执行每个步骤，带错误处理和限流</li>
- * </ol></p>
  *
  * @author zagent
  */
@@ -209,10 +198,10 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         String userInput = context.getUserInput();
 
         // 从DB加载提示词, 无则使用默认值
-        String mcpAnalysisPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.TOOL_MCP.getCode(), DEFAULT_MCP_ANALYSIS_PROMPT);
-        String planningPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.PLANNING.getCode(), DEFAULT_PLANNING_PROMPT);
-        String stepExecutionPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.EXECUTOR.getCode(), DEFAULT_STEP_EXECUTION_PROMPT);
-        String replanningPrompt = getStepPrompt(stepPromptMap, ClientTypeEnum.REPLANNING.getCode(), DEFAULT_REPLANNING_PROMPT);
+        String mcpAnalysisPrompt = StrategyHelper.getStepPrompt(stepPromptMap, ClientTypeEnum.TOOL_MCP.getCode(), DEFAULT_MCP_ANALYSIS_PROMPT);
+        String planningPrompt = StrategyHelper.getStepPrompt(stepPromptMap, ClientTypeEnum.PLANNING.getCode(), DEFAULT_PLANNING_PROMPT);
+        String stepExecutionPrompt = StrategyHelper.getStepPrompt(stepPromptMap, ClientTypeEnum.EXECUTOR.getCode(), DEFAULT_STEP_EXECUTION_PROMPT);
+        String replanningPrompt = StrategyHelper.getStepPrompt(stepPromptMap, ClientTypeEnum.REPLANNING.getCode(), DEFAULT_REPLANNING_PROMPT);
 
         // === 阶段1: MCP工具分析 ===
         String toolAnalysis = "";
@@ -221,10 +210,10 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
             log.info("Plan-and-Execute策略 - 开始MCP工具分析");
             ChatClient mcpClient = aiClientAssemblyService.getOrBuildChatClient(mcpClientId);
             String prompt = String.format(mcpAnalysisPrompt, userInput);
-            sendStageEvent(emitter, "tool_analysis", "active", 1, 0, null, context.getConversationId());
-            toolAnalysis = callClientStream(mcpClient, prompt, context.getConversationId(),
+            StrategyHelper.sendStageEvent(emitter, "tool_analysis", "active", 1, 0, null, context.getConversationId());
+            toolAnalysis = StrategyHelper.callClientStream(mcpClient, FlowPlanParser.escapeTemplateBraces(prompt), context.getConversationId(),
                     emitter, "tool_analysis", 1, 0);
-            sendStageEvent(emitter, "tool_analysis", "done", 1, 0, toolAnalysis, context.getConversationId());
+            StrategyHelper.sendStageEvent(emitter, "tool_analysis", "done", 1, 0, toolAnalysis, context.getConversationId());
             log.info("Plan-and-Execute策略 - 工具分析完成");
         }
 
@@ -236,11 +225,11 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
             ChatClient planningClient = aiClientAssemblyService.getOrBuildChatClient(planningClientId);
             String prompt = String.format(planningPrompt, userInput, toolAnalysis)
                     + "\n\n## 步数限制\n最多规划 " + context.getMaxStep() + " 步，严禁输出超过该数量的执行步骤。";
-            sendStageEvent(emitter, "planning", "active", 2, 0, null, context.getConversationId());
-            planResult = callClientStream(planningClient, prompt, context.getConversationId(),
+            StrategyHelper.sendStageEvent(emitter, "planning", "active", 2, 0, null, context.getConversationId());
+            planResult = StrategyHelper.callClientStream(planningClient, FlowPlanParser.escapeTemplateBraces(prompt), context.getConversationId(),
                     emitter, "planning", 2, 0);
-            log.info("Plan-and-Execute策略 - 规划原文预览: {}", abbreviateForLog(planResult));
-            sendStageEvent(emitter, "planning", "done", 2, 0, planResult,
+            log.info("Plan-and-Execute策略 - 规划原文预览: {}", StrategyHelper.abbreviateForLog(planResult));
+            StrategyHelper.sendStageEvent(emitter, "planning", "done", 2, 0, planResult,
                     buildPlanningPayload(planResult, context.getMaxStep()), context.getConversationId());
             log.info("Plan-and-Execute策略 - 规划完成");
         }
@@ -256,7 +245,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         // === 阶段4: 逐步执行 ===
         String executorClientId = clientTypeMap.get(ClientTypeEnum.EXECUTOR.getCode());
         if (executorClientId == null) {
-            sendStageEvent(emitter, "complete", "done", 0, 0, "无执行客户端，返回计划", context.getConversationId());
+            StrategyHelper.sendStageEvent(emitter, "complete", "done", 0, 0, "无执行客户端，返回计划", context.getConversationId());
             return planResult;
         }
 
@@ -273,37 +262,37 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
             String previousResults = allResults.isEmpty() ? "" : "**前序步骤执行结果:**\n" + allResults;
             String prompt = String.format(stepExecutionPrompt, stepContent, userInput, previousResults);
 
-            sendStageEvent(emitter, "step_execution", "active", stepNum, totalExecSteps, null, context.getConversationId());
+            StrategyHelper.sendStageEvent(emitter, "step_execution", "active", stepNum, totalExecSteps, null, context.getConversationId());
             try {
-                String stepResult = callClientStream(executorClient, prompt, context.getConversationId(),
+                String stepResult = StrategyHelper.callClientStream(executorClient, FlowPlanParser.escapeTemplateBraces(prompt), context.getConversationId(),
                         emitter, "step_execution", stepNum, totalExecSteps);
                 allResults.append(String.format("=== 第%d步结果 ===\n%s\n\n", stepNum, stepResult));
                 String sseContent = stepResult.length() > 500
                         ? stepResult.substring(0, 500) + "...(已截断)"
                         : stepResult;
-                sendStageEvent(emitter, "step_execution", "done", stepNum, totalExecSteps, sseContent, context.getConversationId());
+                StrategyHelper.sendStageEvent(emitter, "step_execution", "done", stepNum, totalExecSteps, sseContent, context.getConversationId());
                 log.info("Plan-and-Execute策略 - 第{}步执行成功", stepNum);
             } catch (Exception e) {
                 String errorMsg = String.format("第%d步执行失败: %s", stepNum, e.getMessage());
                 allResults.append(errorMsg).append("\n\n");
-                sendStageEvent(emitter, "step_execution", "error", stepNum, totalExecSteps, errorMsg, context.getConversationId());
+                StrategyHelper.sendStageEvent(emitter, "step_execution", "error", stepNum, totalExecSteps, errorMsg, context.getConversationId());
                 log.error("Plan-and-Execute策略 - 第{}步执行失败", stepNum, e);
 
                 String replanningClientId = clientTypeMap.get(ClientTypeEnum.REPLANNING.getCode());
                 if (replanningClientId != null) {
                     log.info("Plan-and-Execute策略 - 触发重规划, failureStep={}", stepNum);
-                    sendStageEvent(emitter, "replanning", "active", stepNum, totalExecSteps, errorMsg, context.getConversationId());
+                    StrategyHelper.sendStageEvent(emitter, "replanning", "active", stepNum, totalExecSteps, errorMsg, context.getConversationId());
                     try {
                         ChatClient replanningClient = aiClientAssemblyService.getOrBuildChatClient(replanningClientId);
                         String replanPrompt = String.format(replanningPrompt, userInput, planResult, allResults, stepContent);
-                        String replanResult = callClientStream(replanningClient, replanPrompt, context.getConversationId(),
+                        String replanResult = StrategyHelper.callClientStream(replanningClient, FlowPlanParser.escapeTemplateBraces(replanPrompt), context.getConversationId(),
                                 emitter, "replanning", stepNum, totalExecSteps);
-                        log.info("Plan-and-Execute策略 - 重规划结果预览: {}", abbreviateForLog(replanResult));
-                        sendStageEvent(emitter, "replanning", "done", stepNum, totalExecSteps, replanResult,
+                        log.info("Plan-and-Execute策略 - 重规划结果预览: {}", StrategyHelper.abbreviateForLog(replanResult));
+                        StrategyHelper.sendStageEvent(emitter, "replanning", "done", stepNum, totalExecSteps, replanResult,
                                 buildPlanningPayload(replanResult, context.getMaxStep()), context.getConversationId());
                     } catch (Exception replanningException) {
                         log.warn("Plan-and-Execute策略 - 重规划失败: {}", replanningException.getMessage());
-                        sendStageEvent(emitter, "replanning", "error", stepNum, totalExecSteps,
+                        StrategyHelper.sendStageEvent(emitter, "replanning", "error", stepNum, totalExecSteps,
                                 "重规划失败: " + replanningException.getMessage(), context.getConversationId());
                     }
                 }
@@ -314,18 +303,9 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         }
 
         String finalOutput = allResults.toString();
-        sendStageEvent(emitter, "summary", "done", 0, totalExecSteps, finalOutput, context.getConversationId());
-        sendStageEvent(emitter, "complete", "done", 0, totalExecSteps, "执行完成", context.getConversationId());
+        StrategyHelper.sendStageEvent(emitter, "summary", "done", 0, totalExecSteps, finalOutput, context.getConversationId());
+        StrategyHelper.sendStageEvent(emitter, "complete", "done", 0, totalExecSteps, "执行完成", context.getConversationId());
         return finalOutput;
-    }
-
-    /**
-     * 从stepPromptMap获取指定角色的提示词, DB未配置时返回默认值
-     */
-    private String getStepPrompt(Map<String, String> stepPromptMap, String clientType, String defaultPrompt) {
-        if (stepPromptMap == null) return defaultPrompt;
-        String dbPrompt = stepPromptMap.get(clientType);
-        return (dbPrompt != null && !dbPrompt.isBlank()) ? dbPrompt : defaultPrompt;
     }
 
     /**
@@ -422,7 +402,6 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
         Map<Integer, String> steps = new LinkedHashMap<>();
         if (planText == null || planText.isBlank()) return steps;
 
-        // 第一轮: 匹配 ### 第N步：标题 + 详细内容
         Matcher detailMatcher = DETAIL_STEP_PATTERN.matcher(planText);
         while (detailMatcher.find()) {
             String title = detailMatcher.group(1).trim();
@@ -434,7 +413,6 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
             }
         }
 
-        // 第二轮: 如果第一轮没匹配到，尝试 [ ] 第N步：格式
         if (steps.isEmpty()) {
             Matcher simpleMatcher = SIMPLE_STEP_PATTERN.matcher(planText);
             while (simpleMatcher.find()) {
@@ -451,16 +429,7 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
     }
 
     public static String extractJsonObject(String text) {
-        if (text == null) {
-            return null;
-        }
-        String trimmed = text.trim();
-        int start = trimmed.indexOf('{');
-        int end = trimmed.lastIndexOf('}');
-        if (start < 0 || end < start) {
-            return trimmed;
-        }
-        return trimmed.substring(start, end + 1);
+        return FlowPlanParser.extractJsonObject(text);
     }
 
     private Object buildPlanningPayload(String planText, int maxStep) {
@@ -481,127 +450,6 @@ public class FlowExecuteStrategy implements IExecuteStrategy {
 
     private String trimToEmpty(String value) {
         return value == null ? "" : value.trim();
-    }
-
-    private String abbreviateForLog(String text) {
-        if (text == null) {
-            return "<null>";
-        }
-        String normalized = text.replaceAll("\s+", " ").trim();
-        return normalized.length() > 200 ? normalized.substring(0, 200) + "...(截断)" : normalized;
-    }
-
-    private String callClient(ChatClient client, String prompt, String conversationId) {
-        return client.prompt(escapeTemplateBraces(prompt))
-                .system(s -> s.param("current_date", LocalDate.now().toString()))
-                .advisors(a -> a
-                        .param("chat_memory_conversation_id", conversationId)
-                        .param("chat_memory_response_size", 1024))
-                .call()
-                .content();
-    }
-
-    /**
-     * 流式调用ChatClient, 每个token实时推送SSE事件。
-     * <p>当emitter为null时退化为同步调用callClient。
-     * 注意: prompt会经过escapeTemplateBraces处理。</p>
-     *
-     * @param client      ChatClient实例
-     * @param prompt      提示词（未转义）
-     * @param conversationId 会话ID
-     * @param emitter     SSE发射器
-     * @param stage       当前阶段名称
-     * @param step        当前轮次
-     * @param totalSteps  总步骤数
-     * @return 完整的响应文本（所有token拼接）
-     */
-    private String callClientStream(ChatClient client, String prompt, String conversationId,
-                                    SseEmitter emitter, String stage, int step, int totalSteps) {
-        if (emitter == null) {
-            return callClient(client, prompt, conversationId);
-        }
-
-        StringBuilder result = new StringBuilder();
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<Throwable> errorRef = new AtomicReference<>();
-
-        Flux<ChatClientResponse> flux = client.prompt(escapeTemplateBraces(prompt))
-                .system(s -> s.param("current_date", LocalDate.now().toString()))
-                .advisors(a -> a
-                        .param("chat_memory_conversation_id", conversationId)
-                        .param("chat_memory_response_size", 1024))
-                .stream()
-                .chatClientResponse();
-
-        flux.subscribe(
-                response -> {
-                    try {
-                        String text = response.chatResponse() != null
-                                && response.chatResponse().getResult() != null
-                                && response.chatResponse().getResult().getOutput() != null
-                                ? response.chatResponse().getResult().getOutput().getText()
-                                : null;
-                        if (text != null && !text.isEmpty()) {
-                            result.append(text);
-                            StageEvent tokenEvent = StageEvent.builder()
-                                    .type("token").stage(stage).status("active")
-                                    .step(step).totalSteps(totalSteps)
-                                    .content(text).sessionId(conversationId).build();
-                            emitter.send(SseEmitter.event()
-                                    .data(com.alibaba.fastjson.JSON.toJSONString(tokenEvent)));
-                        }
-                    } catch (Exception e) {
-                        log.error("发送token事件失败", e);
-                    }
-                },
-                error -> {
-                    log.error("流式调用异常, stage={}", stage, error);
-                    errorRef.set(error);
-                    latch.countDown();
-                },
-                latch::countDown
-        );
-
-        try {
-            if (!latch.await(5, TimeUnit.MINUTES)) {
-                log.warn("流式调用超时, stage={}", stage);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("流式调用等待被中断, stage={}", stage, e);
-        }
-
-        // 流式异常时降级为同步调用
-        if (errorRef.get() != null && result.isEmpty()) {
-            log.warn("流式调用失败, 降级为同步调用, stage={}", stage);
-            return callClient(client, prompt, conversationId);
-        }
-
-        return result.toString();
-    }
-
-    public static String escapeTemplateBraces(String prompt) {
-        if (prompt == null || prompt.isEmpty()) {
-            return prompt;
-        }
-        return prompt.replace("{", "\\{").replace("}", "\\}");
-    }
-
-    private void sendStageEvent(SseEmitter emitter, String stage, String status, int step, int totalSteps, String content, String sessionId) {
-        sendStageEvent(emitter, stage, status, step, totalSteps, content, null, sessionId);
-    }
-
-    private void sendStageEvent(SseEmitter emitter, String stage, String status, int step, int totalSteps,
-                                String content, Object payload, String sessionId) {
-        if (emitter == null) return;
-        try {
-            StageEvent event = StageEvent.builder()
-                    .stage(stage).status(status).step(step).totalSteps(totalSteps)
-                    .content(content).payload(payload).sessionId(sessionId).build();
-            emitter.send(SseEmitter.event().data(com.alibaba.fastjson.JSON.toJSONString(event)));
-        } catch (Exception e) {
-            log.error("发送SSE事件失败", e);
-        }
     }
 
 }

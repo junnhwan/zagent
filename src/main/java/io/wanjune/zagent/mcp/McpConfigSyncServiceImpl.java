@@ -15,11 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StreamUtils;
 
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -102,7 +100,7 @@ public class McpConfigSyncServiceImpl implements McpConfigSyncService {
     McpSyncManifest loadManifest() {
         try {
             String rawJson = readRawConfig();
-            String resolvedJson = environment.resolvePlaceholders(stripUtf8Bom(rawJson));
+            String resolvedJson = environment.resolvePlaceholders(McpConfigUtils.stripUtf8Bom(rawJson));
             McpSyncManifest manifest = objectMapper.readValue(resolvedJson, McpSyncManifest.class);
             validateManifest(manifest);
             return manifest;
@@ -126,27 +124,11 @@ public class McpConfigSyncServiceImpl implements McpConfigSyncService {
 
     private Path resolveWritableConfigPath() {
         try {
-            if (StringUtils.startsWith(configLocation, "file:")) {
-                return Paths.get(URI.create(configLocation));
-            }
-            if (StringUtils.startsWith(configLocation, "classpath:")) {
-                String relativePath = StringUtils.removeStart(configLocation, "classpath:");
-                Path sourcePath = Paths.get("src", "main", "resources", relativePath);
-                if (Files.exists(sourcePath)) {
-                    return sourcePath;
-                }
-            }
+            return McpConfigUtils.tryResolveWritableConfigPath(configLocation);
         } catch (Exception e) {
             log.warn("Failed to resolve writable MCP config path: {}", e.getMessage());
+            return null;
         }
-        return null;
-    }
-
-    private String stripUtf8Bom(String content) {
-        if (content != null && !content.isEmpty() && content.charAt(0) == '\uFEFF') {
-            return content.substring(1);
-        }
-        return content;
     }
 
     private void syncModels(List<McpSyncManifest.ModelConfig> models) {

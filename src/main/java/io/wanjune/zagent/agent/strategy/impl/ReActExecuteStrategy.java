@@ -1,7 +1,8 @@
 package io.wanjune.zagent.agent.strategy.impl;
 
-import com.alibaba.fastjson.JSON;
 import io.wanjune.zagent.agent.strategy.IExecuteStrategy;
+import io.wanjune.zagent.agent.strategy.support.AgentToolMapBuilder;
+import io.wanjune.zagent.agent.strategy.support.StrategyHelper;
 import io.wanjune.zagent.agent.tool.AgentToolRegistry;
 import io.wanjune.zagent.chat.assembly.AiClientAssemblyService;
 import io.wanjune.zagent.chat.assembly.model.AssembledAiClient;
@@ -16,13 +17,10 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.ai.tool.execution.ToolExecutionException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -36,6 +34,8 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
     private AiClientAssemblyService aiClientAssemblyService;
     @Resource
     private AgentToolRegistry agentToolRegistry;
+
+    private AgentToolMapBuilder agentToolMapBuilder;
 
     private static final String DEFAULT_REACT_SYSTEM_PROMPT = """
             你是一个真正按 ReAct 范式运行的智能体。
@@ -62,7 +62,8 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
         }
 
         AssembledAiClient assembled = aiClientAssemblyService.getOrBuildAssembledClient(reactClientId);
-        Map<String, ToolCallback> toolMap = buildToolMap(assembled.toolCallbacks());
+        AgentToolMapBuilder toolMapBuilder = getAgentToolMapBuilder();
+        Map<String, ToolCallback> toolMap = toolMapBuilder.buildToolMap(assembled.toolCallbacks());
         String toolProviderClientId = reactClientId;
         if (toolMap.isEmpty()) {
             String fallbackToolClientId = findClient(clientTypeMap,
@@ -71,7 +72,7 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
                     ClientTypeEnum.DEFAULT.getCode());
             if (fallbackToolClientId != null && !fallbackToolClientId.equals(reactClientId)) {
                 AssembledAiClient fallbackClient = aiClientAssemblyService.getOrBuildAssembledClient(fallbackToolClientId);
-                Map<String, ToolCallback> fallbackToolMap = buildToolMap(fallbackClient.toolCallbacks());
+                Map<String, ToolCallback> fallbackToolMap = toolMapBuilder.buildToolMap(fallbackClient.toolCallbacks());
                 if (!fallbackToolMap.isEmpty()) {
                     toolMap = fallbackToolMap;
                     toolProviderClientId = fallbackToolClientId;
@@ -80,7 +81,7 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
         }
 
         // Agent-as-Tool: 检查是否配置了agent_tool类型, 将其他Agent注入为工具
-        Map<String, ToolCallback> agentToolMap = buildAgentToolMap(clientTypeMap, context.getAgentId());
+        Map<String, ToolCallback> agentToolMap = toolMapBuilder.buildAgentToolMap(clientTypeMap, context.getAgentId());
         if (!agentToolMap.isEmpty()) {
             toolMap.putAll(agentToolMap);
             log.info("ReAct策略 - 已注入 {} 个Agent-as-Tool: {}", agentToolMap.size(), agentToolMap.keySet());
@@ -96,7 +97,7 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
         messages.add(new SystemMessage(systemPrompt));
         messages.add(new UserMessage(context.getUserInput()));
 
-        sendStageEvent(emitter, "reasoning", "active", 0, maxIterations,
+        StrategyHelper.sendStageEvent(emitter, "reasoning", "active", 0, maxIterations,
                 "ReAct开始，准备进入工具推理循环", context.getConversationId());
         log.info("ReAct策略 - 启动真实工具循环, reasoningClientId={}, toolProviderClientId={}, tools={}",
                 reactClientId, toolProviderClientId, toolMap.keySet());
@@ -104,13 +105,13 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
         String finalAnswer = null;
         for (int round = 1; round <= maxIterations; round++) {
             log.info("ReAct策略 - 第{}轮开始, messageCount={}, toolCount={}", round, messages.size(), toolMap.size());
-            sendStageEvent(emitter, "reasoning", "active", round, maxIterations,
+            StrategyHelper.sendStageEvent(emitter, "reasoning", "active", round, maxIterations,
                     "第" + round + "轮推理开始", context.getConversationId());
 
             ChatResponse response = assembled.chatModel().call(new Prompt(messages));
             AssistantMessage assistantMessage = response.getResult().getOutput();
             String assistantText = assistantMessage.getText();
-            log.info("ReAct策略 - 第{}轮模型输出预览: {}", round, abbreviateForLog(assistantText));
+            log.info("ReAct策略 - 第{}轮模型输出预览: {}", round, StrategyHelper.abbreviateForLog(assistantText));
 
             messages.add(assistantMessage);
 
@@ -118,14 +119,14 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
             if (toolCalls == null || toolCalls.isEmpty()) {
                 finalAnswer = assistantText;
                 log.info("ReAct策略 - 第{}轮无工具调用，输出最终答案", round);
-                sendStageEvent(emitter, "final", "done", round, maxIterations,
+                StrategyHelper.sendStageEvent(emitter, "final", "done", round, maxIterations,
                         finalAnswer, context.getConversationId());
                 break;
             }
 
             log.info("ReAct策略 - 第{}轮检测到{}个工具调用: {}", round, toolCalls.size(),
                     toolCalls.stream().map(call -> call.name()).collect(Collectors.toList()));
-            sendStageEvent(emitter, "action", "active", round, maxIterations,
+            StrategyHelper.sendStageEvent(emitter, "action", "active", round, maxIterations,
                     "检测到工具调用: " + toolCalls.stream().map(call -> call.name()).collect(Collectors.joining(", ")),
                     toolCalls, context.getConversationId());
 
@@ -138,22 +139,22 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
                     String missing = "未找到工具: " + toolName;
                     log.warn("ReAct策略 - 第{}轮工具不存在: {}", round, toolName);
                     toolResponses.add(new ToolResponseMessage.ToolResponse(toolCall.id(), toolName, missing));
-                    sendStageEvent(emitter, "observation", "error", round, maxIterations,
+                    StrategyHelper.sendStageEvent(emitter, "observation", "error", round, maxIterations,
                             missing, context.getConversationId());
                     continue;
                 }
 
                 try {
-                    log.info("ReAct策略 - 第{}轮执行工具: {}, input={}", round, toolName, abbreviateForLog(toolInput));
+                    log.info("ReAct策略 - 第{}轮执行工具: {}, input={}", round, toolName, StrategyHelper.abbreviateForLog(toolInput));
                     String result = callback.call(toolInput);
                     toolResponses.add(new ToolResponseMessage.ToolResponse(toolCall.id(), toolName, result));
-                    sendStageEvent(emitter, "observation", "done", round, maxIterations,
+                    StrategyHelper.sendStageEvent(emitter, "observation", "done", round, maxIterations,
                             result, Map.of("tool", toolName), context.getConversationId());
                 } catch (Exception ex) {
                     String error = "工具执行失败: " + toolName + " - " + ex.getMessage();
                     log.error("ReAct策略 - 第{}轮工具执行失败: {}", round, toolName, ex);
                     toolResponses.add(new ToolResponseMessage.ToolResponse(toolCall.id(), toolName, error));
-                    sendStageEvent(emitter, "observation", "error", round, maxIterations,
+                    StrategyHelper.sendStageEvent(emitter, "observation", "error", round, maxIterations,
                             error, Map.of("tool", toolName), context.getConversationId());
                 }
             }
@@ -164,10 +165,10 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
         if (finalAnswer == null || finalAnswer.isBlank()) {
             finalAnswer = "ReAct达到最大轮次，已停止。请检查工具返回结果或适当增大 maxIterations。";
             log.warn("ReAct策略 - 达到最大轮次仍未产出最终答案");
-            sendStageEvent(emitter, "final", "done", maxIterations, maxIterations,
+            StrategyHelper.sendStageEvent(emitter, "final", "done", maxIterations, maxIterations,
                     finalAnswer, context.getConversationId());
         }
-        sendStageEvent(emitter, "complete", "done", maxIterations, maxIterations,
+        StrategyHelper.sendStageEvent(emitter, "complete", "done", maxIterations, maxIterations,
                 "执行完成", context.getConversationId());
         return finalAnswer;
     }
@@ -181,56 +182,11 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
      * </ul>
      * </p>
      */
-    private Map<String, ToolCallback> buildAgentToolMap(Map<String, String> clientTypeMap, String currentAgentId) {
-        String agentToolConfig = clientTypeMap.get(ClientTypeEnum.AGENT_TOOL.getCode());
-        if (agentToolConfig == null || agentToolConfig.isBlank()) {
-            return Map.of();
+    private AgentToolMapBuilder getAgentToolMapBuilder() {
+        if (agentToolMapBuilder == null) {
+            agentToolMapBuilder = new AgentToolMapBuilder(agentToolRegistry);
         }
-
-        List<ToolCallback> agentTools;
-        if ("all".equalsIgnoreCase(agentToolConfig.trim())) {
-            agentTools = agentToolRegistry.buildAllAgentTools(currentAgentId);
-        } else {
-            List<String> agentIds = Arrays.stream(agentToolConfig.split(","))
-                    .map(String::trim)
-                    .filter(id -> !id.isBlank() && !id.equals(currentAgentId))
-                    .toList();
-            agentTools = agentToolRegistry.buildAgentTools(agentIds);
-        }
-        return buildToolMap(agentTools);
-    }
-
-    private Map<String, ToolCallback> buildToolMap(List<ToolCallback> callbacks) {
-        Map<String, ToolCallback> toolMap = new HashMap<>();
-        if (callbacks == null) {
-            return toolMap;
-        }
-        for (ToolCallback callback : callbacks) {
-            if (callback == null || callback.getToolDefinition() == null) {
-                continue;
-            }
-            String name = callback.getToolDefinition().name();
-            if (name != null && !name.isBlank()) {
-                toolMap.put(name, callback);
-            }
-        }
-        return toolMap;
-    }
-
-    private int parsePositiveInt(Map<String, Object> extConfig, String key, int defaultValue) {
-        if (extConfig == null) {
-            return defaultValue;
-        }
-        Object value = extConfig.get(key);
-        if (value == null) {
-            return defaultValue;
-        }
-        try {
-            int parsed = Integer.parseInt(String.valueOf(value));
-            return parsed > 0 ? parsed : defaultValue;
-        } catch (Exception ignored) {
-            return defaultValue;
-        }
+        return agentToolMapBuilder;
     }
 
     private String findClient(Map<String, String> clientTypeMap, String... keys) {
@@ -241,28 +197,5 @@ public class ReActExecuteStrategy implements IExecuteStrategy {
             }
         }
         return null;
-    }
-
-    private String abbreviateForLog(String text) {
-        if (text == null) return "<null>";
-        String normalized = text.replaceAll("\\s+", " ").trim();
-        return normalized.length() > 200 ? normalized.substring(0, 200) + "...(截断)" : normalized;
-    }
-
-    private void sendStageEvent(SseEmitter emitter, String stage, String status, int step, int totalSteps, String content, String sessionId) {
-        sendStageEvent(emitter, stage, status, step, totalSteps, content, null, sessionId);
-    }
-
-    private void sendStageEvent(SseEmitter emitter, String stage, String status, int step, int totalSteps,
-                                String content, Object payload, String sessionId) {
-        if (emitter == null) return;
-        try {
-            StageEvent event = StageEvent.builder()
-                    .stage(stage).status(status).step(step).totalSteps(totalSteps)
-                    .content(content).payload(payload).sessionId(sessionId).build();
-            emitter.send(SseEmitter.event().data(JSON.toJSONString(event)));
-        } catch (Exception e) {
-            log.error("发送SSE事件失败", e);
-        }
     }
 }

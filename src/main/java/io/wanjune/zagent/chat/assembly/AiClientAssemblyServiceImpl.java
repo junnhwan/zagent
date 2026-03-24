@@ -1,7 +1,6 @@
 package io.wanjune.zagent.chat.assembly;
 
 import io.modelcontextprotocol.client.McpSyncClient;
-import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.wanjune.zagent.chat.assembly.model.AssembledAiClient;
 import io.wanjune.zagent.chat.assembly.factory.AiClientAdvisorFactory;
 import io.wanjune.zagent.chat.assembly.factory.AiClientMcpToolFactory;
@@ -14,7 +13,6 @@ import io.wanjune.zagent.mapper.AiClientSystemPromptMapper;
 import io.wanjune.zagent.mapper.AiClientToolMcpMapper;
 import io.wanjune.zagent.mcp.McpBindingResolver;
 import io.wanjune.zagent.mcp.McpConfigSyncService;
-import io.wanjune.zagent.mcp.McpTransportConfigParserImpl;
 import io.wanjune.zagent.model.dto.McpRuntimeState;
 import io.wanjune.zagent.model.entity.AiAgentFlowConfig;
 import io.wanjune.zagent.model.entity.AiClientAdvisor;
@@ -45,7 +43,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 @Service
 public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org.springframework.beans.factory.DisposableBean {
 
-    private final ConcurrentHashMap<String, ChatClient> clientCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AssembledAiClient> assembledClientCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, McpRuntimeState> mcpRuntimeStates = new ConcurrentHashMap<>();
     private final List<McpSyncClient> mcpClientPool = Collections.synchronizedList(new ArrayList<>());
@@ -88,7 +85,6 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
 
     @Override
     public void invalidate(String clientId) {
-        clientCache.remove(clientId);
         assembledClientCache.remove(clientId);
         log.info("ChatClient cache invalidated for clientId: {}", clientId);
     }
@@ -109,7 +105,6 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
             }
         }
         mcpClientPool.clear();
-        clientCache.clear();
         assembledClientCache.clear();
         log.info("MCP clients and ChatClient cache cleared");
     }
@@ -217,26 +212,8 @@ public class AiClientAssemblyServiceImpl implements AiClientAssemblyService, org
 
         ChatClient chatClient = builder.build();
         AssembledAiClient assembled = new AssembledAiClient(chatClient, chatModel, systemPrompt, advisorList, toolCallbacks);
-        clientCache.put(clientId, chatClient);
         log.info("ChatClient built successfully for clientId: {}, model: {}, advisors: {}, mcpTools: {}",
                 clientId, modelConfig.getModelName(), advisors.size(), mcpTools.size());
         return assembled;
-    }
-
-    public static ServerParameters buildServerParameters(String transportConfig) {
-        McpTransportConfigParserImpl parser = new McpTransportConfigParserImpl();
-        return parser.toServerParameters(parser.parseStdio(transportConfig));
-    }
-
-    public static String normalizeSseBaseUri(String baseUri) {
-        return McpTransportConfigParserImpl.normalizeSseBaseUri(baseUri);
-    }
-
-    public static String normalizeSseEndpoint(String sseEndpoint) {
-        return McpTransportConfigParserImpl.normalizeSseEndpoint(sseEndpoint);
-    }
-
-    public static String formatMcpBindingLabel(AiClientToolMcp mcp) {
-        return AiClientMcpToolFactory.formatMcpBindingLabel(mcp);
     }
 }

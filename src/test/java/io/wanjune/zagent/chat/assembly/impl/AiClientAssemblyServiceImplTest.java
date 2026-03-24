@@ -1,7 +1,8 @@
 package io.wanjune.zagent.chat.assembly.impl;
 
-import io.modelcontextprotocol.client.transport.ServerParameters;
-import io.wanjune.zagent.chat.assembly.AiClientAssemblyServiceImpl;
+import io.wanjune.zagent.chat.assembly.factory.AiClientMcpToolFactory;
+import io.wanjune.zagent.mcp.McpTransportConfigParserImpl;
+import io.wanjune.zagent.model.dto.StdioTransportConfig;
 import io.wanjune.zagent.model.entity.AiClientToolMcp;
 import org.junit.jupiter.api.Test;
 
@@ -11,8 +12,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class AiClientAssemblyServiceImplTest {
 
+    private final McpTransportConfigParserImpl parser = new McpTransportConfigParserImpl();
+
     @Test
-    void buildServerParametersSupportsArgsAndEnv() {
+    void parseStdioSupportsArgsAndEnv() {
         String transportConfig = """
                 {
                   "filesystem": {
@@ -26,11 +29,11 @@ class AiClientAssemblyServiceImplTest {
                 }
                 """;
 
-        ServerParameters params = AiClientAssemblyServiceImpl.buildServerParameters(transportConfig);
+        StdioTransportConfig config = parser.parseStdio(transportConfig);
 
-        assertThat(params.getCommand()).isEqualTo("npx");
-        assertThat(params.getArgs()).containsExactly("-y", "@modelcontextprotocol/server-filesystem", "D:\\dev\\my_proj\\zagent\\docs");
-        assertThat(params.getEnv()).containsAllEntriesOf(Map.of(
+        assertThat(config.command()).isEqualTo("npx");
+        assertThat(config.args()).containsExactly("-y", "@modelcontextprotocol/server-filesystem", "D:\\dev\\my_proj\\zagent\\docs");
+        assertThat(config.env()).containsAllEntriesOf(Map.of(
                 "MCP_LOG_LEVEL", "debug",
                 "TEST_MODE", "true"
         ));
@@ -38,16 +41,16 @@ class AiClientAssemblyServiceImplTest {
 
     @Test
     void normalizeSseConfigNormalizesBaseUriAndEndpointSlashes() {
-        assertThat(AiClientAssemblyServiceImpl.normalizeSseBaseUri("http://127.0.0.1:18080/"))
+        assertThat(McpTransportConfigParserImpl.normalizeSseBaseUri("http://127.0.0.1:18080/"))
                 .isEqualTo("http://127.0.0.1:18080");
 
-        assertThat(AiClientAssemblyServiceImpl.normalizeSseEndpoint("/sse"))
+        assertThat(McpTransportConfigParserImpl.normalizeSseEndpoint("/sse"))
                 .isEqualTo("/sse");
 
-        assertThat(AiClientAssemblyServiceImpl.normalizeSseEndpoint("sse/"))
+        assertThat(McpTransportConfigParserImpl.normalizeSseEndpoint("sse/"))
                 .isEqualTo("/sse");
 
-        assertThat(AiClientAssemblyServiceImpl.normalizeSseEndpoint(null))
+        assertThat(McpTransportConfigParserImpl.normalizeSseEndpoint(null))
                 .isEqualTo("/sse");
     }
 
@@ -57,7 +60,7 @@ class AiClientAssemblyServiceImplTest {
         mcp.setMcpName("filesystem-docs");
         mcp.setTransportType("stdio");
 
-        assertThat(AiClientAssemblyServiceImpl.formatMcpBindingLabel(mcp))
+        assertThat(AiClientMcpToolFactory.formatMcpBindingLabel(mcp))
                 .isEqualTo("filesystem-docs[stdio]");
     }
 }
