@@ -2,7 +2,7 @@
 
 ## 文档状态
 - 对应 Sprint：Sprint 4 - Observability 与简历化收尾
-- 最后更新时间：2026-03-26
+- 最后更新时间：2026-03-27
 - 结论：已完成实现与自测，待归档
 
 ## 一、实现结论
@@ -36,3 +36,12 @@
 ## 四、已知问题
 - 前端构建仍有 chunk size warning（历史问题，非本轮新增）。
 - 本轮 Observability 以“最近一次运行证据 + 运行态聚合”为主，不包含完整 trace/tool-call 后端链路。
+
+## 五、补充变更：MCP 配置迁移为纯 YAML
+- MCP 主配置入口已统一迁移到 `src/main/resources/application.yml` 的 `zagent.mcp.sync.manifest`。
+- 已删除 `src/main/resources/mcp-tools.json` 与 `src/test/resources/mcp-tools-test.json`，运行时不再依赖 JSON 文件。
+- 新增 `McpSyncProperties` 与 `McpManifestStateHolder`，启动时从 YAML 装载 manifest，运行时模式切换仅影响当前进程内存态。
+- `McpConfigSyncServiceImpl`、`McpModeAdminServiceImpl` 与对应测试已同步改造，文档也已统一更新到 YAML 口径。
+- 本轮补充验证：
+  - `mvn "-DskipTests" compile` 通过。
+  - `mvn "-Dtest=McpConfigSyncServiceImplTest,McpModeAdminServiceImplTest" test` 通过。

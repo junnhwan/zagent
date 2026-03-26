@@ -1,23 +1,22 @@
 package io.wanjune.zagent.chat.assembly.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.wanjune.zagent.model.dto.McpRuntimeState;
-import io.wanjune.zagent.model.vo.McpModeStatusVO;
-import io.wanjune.zagent.mcp.McpTransportConfigParser;
 import io.wanjune.zagent.chat.assembly.AiClientAssemblyService;
 import io.wanjune.zagent.mcp.McpConfigSyncService;
+import io.wanjune.zagent.mcp.McpManifestStateHolder;
 import io.wanjune.zagent.mcp.McpModeAdminServiceImpl;
+import io.wanjune.zagent.mcp.McpSyncProperties;
+import io.wanjune.zagent.mcp.McpTransportConfigParser;
 import io.wanjune.zagent.mcp.McpTransportConfigParserImpl;
+import io.wanjune.zagent.model.dto.McpRuntimeState;
+import io.wanjune.zagent.model.dto.McpSyncManifest;
+import io.wanjune.zagent.model.vo.McpModeStatusVO;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.core.io.DefaultResourceLoader;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -26,37 +25,25 @@ class McpModeAdminServiceImplTest {
     private final McpTransportConfigParser parser = new McpTransportConfigParserImpl();
 
     @Test
-    void getCurrentStatusSupportsUtf8BomManifest() throws Exception {
-        Path tempFile = Files.createTempFile("mcp-tools-bom", ".json");
-        String json = """
-                {
-                  "models": [],
-                  "mcps": [],
-                  "bindings": [
-                    {
-                      "sourceType": "client",
-                      "sourceId": "3006",
-                      "targetType": "model",
-                      "targetIds": ["2002"],
-                      "status": 1
-                    }
-                  ]
-                }
-                """;
-
-        Files.writeString(tempFile, "\uFEFF" + json, StandardCharsets.UTF_8);
-
+    void getCurrentStatusReadsCurrentManifestFromStateHolder() {
         AiClientAssemblyService assemblyService = Mockito.mock(AiClientAssemblyService.class);
         Mockito.when(assemblyService.getMcpRuntimeStates()).thenReturn(Map.of());
 
+        McpSyncProperties properties = new McpSyncProperties();
+        properties.setManifest(manifest(
+                List.of(),
+                List.of(),
+                List.of(binding("client", "3006", "model", List.of("2002")))
+        ));
+        McpManifestStateHolder stateHolder = new McpManifestStateHolder(properties, new ObjectMapper());
+        stateHolder.initialize();
+
         McpModeAdminServiceImpl service = new McpModeAdminServiceImpl(
-                new ObjectMapper(),
-                new DefaultResourceLoader(),
+                stateHolder,
                 Mockito.mock(McpConfigSyncService.class),
                 assemblyService,
                 parser
         );
-        ReflectionTestUtils.setField(service, "configLocation", tempFile.toUri().toString());
 
         McpModeStatusVO status = service.getCurrentStatus();
 
@@ -66,39 +53,30 @@ class McpModeAdminServiceImplTest {
     }
 
     @Test
-    void getCurrentStatusIncludesActiveMcpTransportAndLastError() throws Exception {
-        Path tempFile = Files.createTempFile("mcp-tools-runtime", ".json");
-        String sseTransportConfig = new ObjectMapper().writeValueAsString(
-                "{\"baseUri\":\"http://127.0.0.1:18081/\",\"sseEndpoint\":\"sse/\"}");
-
-        Files.writeString(tempFile, """
-                {
-                  "models": [
-                    {"modelId":"2005","apiId":"1001","modelName":"gpt-5.4","modelType":"openai","status":1}
-                  ],
-                  "mcps": [
-                    {"mcpId":"5003","mcpName":"amap-sse","transportType":"sse","transportConfig":%s,"requestTimeout":20,"status":1}
-                  ],
-                  "bindings": [
-                    {"sourceType":"model","sourceId":"2005","targetType":"tool_mcp","targetIds":["5003"],"status":1},
-                    {"sourceType":"client","sourceId":"3006","targetType":"model","targetIds":["2005"],"status":1}
-                  ]
-                }
-                """.formatted(sseTransportConfig), StandardCharsets.UTF_8);
-
+    void getCurrentStatusIncludesActiveMcpTransportAndLastError() {
         AiClientAssemblyService assemblyService = Mockito.mock(AiClientAssemblyService.class);
         Mockito.when(assemblyService.getMcpRuntimeStates()).thenReturn(Map.of(
                 "5003", new McpRuntimeState(false, "SSE connection refused", Instant.parse("2026-03-21T08:00:00Z"))
         ));
 
+        McpSyncProperties properties = new McpSyncProperties();
+        properties.setManifest(manifest(
+                List.of(model("2005", "1001", "gpt-5.4", "openai")),
+                List.of(mcp("5003", "amap-sse", "sse", "{\"baseUri\":\"http://127.0.0.1:18081/\",\"sseEndpoint\":\"sse/\"}", 20)),
+                List.of(
+                        binding("model", "2005", "tool_mcp", List.of("5003")),
+                        binding("client", "3006", "model", List.of("2005"))
+                )
+        ));
+        McpManifestStateHolder stateHolder = new McpManifestStateHolder(properties, new ObjectMapper());
+        stateHolder.initialize();
+
         McpModeAdminServiceImpl service = new McpModeAdminServiceImpl(
-                new ObjectMapper(),
-                new DefaultResourceLoader(),
+                stateHolder,
                 Mockito.mock(McpConfigSyncService.class),
                 assemblyService,
                 parser
         );
-        ReflectionTestUtils.setField(service, "configLocation", tempFile.toUri().toString());
 
         McpModeStatusVO status = service.getCurrentStatus();
 
@@ -109,5 +87,46 @@ class McpModeAdminServiceImplTest {
         assertThat(status.getActiveMcps().get(0).getTransportSummary()).isEqualTo("http://127.0.0.1:18081/sse");
         assertThat(status.getActiveMcps().get(0).getReady()).isFalse();
         assertThat(status.getActiveMcps().get(0).getLastError()).isEqualTo("SSE connection refused");
+    }
+
+    private McpSyncManifest manifest(List<McpSyncManifest.ModelConfig> models,
+                                     List<McpSyncManifest.McpToolConfig> mcps,
+                                     List<McpSyncManifest.BindingConfig> bindings) {
+        McpSyncManifest manifest = new McpSyncManifest();
+        manifest.setModels(models);
+        manifest.setMcps(mcps);
+        manifest.setBindings(bindings);
+        return manifest;
+    }
+
+    private McpSyncManifest.ModelConfig model(String modelId, String apiId, String modelName, String modelType) {
+        McpSyncManifest.ModelConfig model = new McpSyncManifest.ModelConfig();
+        model.setModelId(modelId);
+        model.setApiId(apiId);
+        model.setModelName(modelName);
+        model.setModelType(modelType);
+        model.setStatus(1);
+        return model;
+    }
+
+    private McpSyncManifest.McpToolConfig mcp(String mcpId, String mcpName, String transportType, String transportConfig, int timeout) {
+        McpSyncManifest.McpToolConfig mcp = new McpSyncManifest.McpToolConfig();
+        mcp.setMcpId(mcpId);
+        mcp.setMcpName(mcpName);
+        mcp.setTransportType(transportType);
+        mcp.setTransportConfig(transportConfig);
+        mcp.setRequestTimeout(timeout);
+        mcp.setStatus(1);
+        return mcp;
+    }
+
+    private McpSyncManifest.BindingConfig binding(String sourceType, String sourceId, String targetType, List<String> targetIds) {
+        McpSyncManifest.BindingConfig binding = new McpSyncManifest.BindingConfig();
+        binding.setSourceType(sourceType);
+        binding.setSourceId(sourceId);
+        binding.setTargetType(targetType);
+        binding.setTargetIds(targetIds);
+        binding.setStatus(1);
+        return binding;
     }
 }

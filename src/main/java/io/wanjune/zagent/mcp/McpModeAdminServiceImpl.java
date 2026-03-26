@@ -1,21 +1,13 @@
 package io.wanjune.zagent.mcp;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.wanjune.zagent.model.dto.McpSyncManifest;
 import io.wanjune.zagent.model.dto.McpRuntimeState;
 import io.wanjune.zagent.model.vo.McpModeStatusVO;
 import io.wanjune.zagent.model.vo.McpRuntimeStatusVO;
 import io.wanjune.zagent.chat.assembly.AiClientAssemblyService;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,22 +25,16 @@ public class McpModeAdminServiceImpl implements McpModeAdminService {
         MODE_DEFINITIONS.put("amap", new ModeDefinition("amap", "高德天气/POI", "2005", "高德 SSE MCP，支持天气和 POI 搜索"));
     }
 
-    private final ObjectMapper objectMapper;
-    private final ResourceLoader resourceLoader;
+    private final McpManifestStateHolder manifestStateHolder;
     private final McpConfigSyncService mcpConfigSyncService;
     private final AiClientAssemblyService aiClientAssemblyService;
     private final McpTransportConfigParser mcpTransportConfigParser;
 
-    @Value("${zagent.mcp.sync.location:classpath:mcp-tools.json}")
-    private String configLocation;
-
-    public McpModeAdminServiceImpl(ObjectMapper objectMapper,
-                                   ResourceLoader resourceLoader,
+    public McpModeAdminServiceImpl(McpManifestStateHolder manifestStateHolder,
                                    McpConfigSyncService mcpConfigSyncService,
                                    AiClientAssemblyService aiClientAssemblyService,
                                    McpTransportConfigParser mcpTransportConfigParser) {
-        this.objectMapper = objectMapper;
-        this.resourceLoader = resourceLoader;
+        this.manifestStateHolder = manifestStateHolder;
         this.mcpConfigSyncService = mcpConfigSyncService;
         this.aiClientAssemblyService = aiClientAssemblyService;
         this.mcpTransportConfigParser = mcpTransportConfigParser;
@@ -172,34 +158,11 @@ public class McpModeAdminServiceImpl implements McpModeAdminService {
     }
 
     private McpSyncManifest loadManifest() {
-        try {
-            String rawJson = Files.readString(resolveWritableConfigPath(), StandardCharsets.UTF_8);
-            return objectMapper.readValue(McpConfigUtils.stripUtf8Bom(rawJson), McpSyncManifest.class);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to read MCP config file", e);
-        }
+        return manifestStateHolder.snapshot();
     }
 
     private void saveManifest(McpSyncManifest manifest) {
-        try {
-            String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(manifest);
-            Files.writeString(resolveWritableConfigPath(), json + System.lineSeparator(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to write MCP config file", e);
-        }
-    }
-
-    private Path resolveWritableConfigPath() {
-        try {
-            Path path = McpConfigUtils.tryResolveWritableConfigPath(configLocation);
-            if (path != null) {
-                return path;
-            }
-            Resource resource = resourceLoader.getResource(configLocation);
-            return resource.getFile().toPath();
-        } catch (Exception e) {
-            throw new IllegalStateException("Cannot resolve writable MCP config path from: " + configLocation, e);
-        }
+        manifestStateHolder.replace(manifest);
     }
 
     private String normalizeMode(String mode) {

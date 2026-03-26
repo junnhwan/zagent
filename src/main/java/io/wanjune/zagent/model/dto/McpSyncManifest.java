@@ -2,16 +2,17 @@ package io.wanjune.zagent.model.dto;
 
 import lombok.Data;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
 public class McpSyncManifest {
 
-    private List<ModelConfig> models;
+    private List<ModelConfig> models = new ArrayList<>();
 
-    private List<McpToolConfig> mcps;
+    private List<McpToolConfig> mcps = new ArrayList<>();
 
-    private List<BindingConfig> bindings;
+    private List<BindingConfig> bindings = new ArrayList<>();
 
     @Data
     public static class ModelConfig {

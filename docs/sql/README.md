@@ -34,18 +34,20 @@
 
 推荐方式：
 
-1. 修改 `src/main/resources/mcp-tools.json`
-2. 重启后端
-3. 应用启动时自动把 MCP 的 model / tool / binding 同步到 MySQL
+1. 修改 `src/main/resources/application.yml` 中的 `zagent.mcp.sync.manifest`
+2. 如有需要，同时调整 `zagent.mcp.filesystem.*`、`zagent.mcp.sse-probe.*`、`zagent.mcp.amap.*`、`zagent.mcp.git-repo.*`
+3. 重启后端
+4. 应用启动时自动把 MCP 的 model / tool / binding 同步到 MySQL
 
 也就是说：
 
 - **数据库是运行时存储**
-- **JSON 是当前推荐的 MCP 配置入口**
+- **YAML 是当前唯一的 MCP 配置入口**
+- **运行时通过管理接口切换模式，只在当前进程生效；重启后仍以 `application.yml` 为准**
 
 ## 三、当前 MCP 场景说明
 
-`src/main/resources/mcp-tools.json` 里当前已经包含以下场景：
+`src/main/resources/application.yml` 的 `zagent.mcp.sync.manifest` 当前已经包含以下场景：
 
 - `2002` -> `5001`：`stdio filesystem`
 - `2003` -> `5002`：`sse probe`
@@ -56,10 +58,15 @@
 - `3006` -> `2005`
 - `3008` -> `2005`
 
-如果要切换：
+如果要持久切换：
 
-- 改 `client` 对应 binding 的 `targetIds`
+- 改 `bindings` 中 `client` 对应项的 `targetIds`
 - 重启后端即可
+
+如果只是临时演示切换：
+
+- 可以通过管理接口切换 MCP 模式
+- 该切换只影响当前进程，重启后会恢复为 `application.yml` 中的配置
 
 ## 四、联调建议流程
 
@@ -97,7 +104,7 @@
 - `sse probe`：运行 `python tools/mcp_sse_probe.py`
 - `amap sse`：运行 `python tools/amap_sse_mcp.py`
 
-然后修改 `mcp-tools.json` 绑定并重启后端。
+如果要长期生效，请修改 `application.yml` 中的 MCP 绑定并重启后端。
 
 ## 五、legacy 目录是干嘛的
 

@@ -1,23 +1,13 @@
 package io.wanjune.zagent.mcp;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.wanjune.zagent.model.dto.McpSyncManifest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
-import org.springframework.core.io.support.ResourcePatternUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StreamUtils;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -46,38 +36,32 @@ public class McpConfigSyncServiceImpl implements McpConfigSyncService {
             "(source_type, source_id, target_type, target_id, ext_param, status) VALUES (?, ?, ?, ?, ?, ?)";
 
     private final JdbcTemplate jdbcTemplate;
-    private final ObjectMapper objectMapper;
-    private final ResourceLoader resourceLoader;
+    private final McpSyncProperties properties;
+    private final McpManifestStateHolder manifestStateHolder;
     private final Environment environment;
     private final AtomicBoolean synced = new AtomicBoolean(false);
 
-    @Value("${zagent.mcp.sync.enabled:true}")
-    private boolean enabled;
-
-    @Value("${zagent.mcp.sync.location:classpath:mcp-tools.json}")
-    private String configLocation;
-
     public McpConfigSyncServiceImpl(@Qualifier("mysqlJdbcTemplate") JdbcTemplate jdbcTemplate,
-                                    ObjectMapper objectMapper,
-                                    ResourceLoader resourceLoader,
+                                    McpSyncProperties properties,
+                                    McpManifestStateHolder manifestStateHolder,
                                     Environment environment) {
         this.jdbcTemplate = jdbcTemplate;
-        this.objectMapper = objectMapper;
-        this.resourceLoader = resourceLoader;
+        this.properties = properties;
+        this.manifestStateHolder = manifestStateHolder;
         this.environment = environment;
     }
 
     @Override
     public void syncIfEnabled() {
-        if (!enabled) {
-            log.info("MCP JSON sync disabled");
+        if (!properties.isEnabled()) {
+            log.info("MCP config sync disabled");
             return;
         }
         if (synced.compareAndSet(false, true)) {
             syncNow();
             return;
         }
-        log.debug("MCP JSON sync already completed, skipping repeat sync");
+        log.debug("MCP config sync already completed, skipping repeat sync");
     }
 
     @Override
@@ -91,43 +75,40 @@ public class McpConfigSyncServiceImpl implements McpConfigSyncService {
         syncModels(manifest.getModels());
         syncMcps(manifest.getMcps());
         syncBindings(manifest.getBindings());
-        log.info("MCP JSON sync finished: models={}, mcps={}, bindings={}",
+        log.info("MCP config sync finished: models={}, mcps={}, bindings={}",
                 safeList(manifest.getModels()).size(),
                 safeList(manifest.getMcps()).size(),
                 safeList(manifest.getBindings()).size());
     }
 
     McpSyncManifest loadManifest() {
-        try {
-            String rawJson = readRawConfig();
-            String resolvedJson = environment.resolvePlaceholders(McpConfigUtils.stripUtf8Bom(rawJson));
-            McpSyncManifest manifest = objectMapper.readValue(resolvedJson, McpSyncManifest.class);
-            validateManifest(manifest);
-            return manifest;
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to load MCP sync config: " + configLocation, e);
-        }
+        McpSyncManifest manifest = manifestStateHolder.snapshot();
+        resolvePlaceholders(manifest);
+        validateManifest(manifest);
+        return manifest;
     }
 
-    private String readRawConfig() throws IOException {
-        Path writablePath = resolveWritableConfigPath();
-        if (writablePath != null && Files.exists(writablePath)) {
-            return Files.readString(writablePath, StandardCharsets.UTF_8);
+    private void resolvePlaceholders(McpSyncManifest manifest) {
+        for (McpSyncManifest.ModelConfig model : safeList(manifest.getModels())) {
+            model.setModelId(resolve(model.getModelId()));
+            model.setApiId(resolve(model.getApiId()));
+            model.setModelName(resolve(model.getModelName()));
+            model.setModelType(resolve(model.getModelType()));
         }
-
-        Resource resource = ResourcePatternUtils.getResourcePatternResolver(resourceLoader).getResource(configLocation);
-        if (!resource.exists()) {
-            throw new IllegalStateException("MCP sync config not found: " + configLocation);
+        for (McpSyncManifest.McpToolConfig mcp : safeList(manifest.getMcps())) {
+            mcp.setMcpId(resolve(mcp.getMcpId()));
+            mcp.setMcpName(resolve(mcp.getMcpName()));
+            mcp.setTransportType(resolve(mcp.getTransportType()));
+            mcp.setTransportConfig(resolve(mcp.getTransportConfig()));
         }
-        return StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
-    }
-
-    private Path resolveWritableConfigPath() {
-        try {
-            return McpConfigUtils.tryResolveWritableConfigPath(configLocation);
-        } catch (Exception e) {
-            log.warn("Failed to resolve writable MCP config path: {}", e.getMessage());
-            return null;
+        for (McpSyncManifest.BindingConfig binding : safeList(manifest.getBindings())) {
+            binding.setSourceType(resolve(binding.getSourceType()));
+            binding.setSourceId(resolve(binding.getSourceId()));
+            binding.setTargetType(resolve(binding.getTargetType()));
+            binding.setExtParam(resolve(binding.getExtParam()));
+            if (binding.getTargetIds() != null) {
+                binding.setTargetIds(binding.getTargetIds().stream().map(this::resolve).toList());
+            }
         }
     }
 
@@ -200,6 +181,13 @@ public class McpConfigSyncServiceImpl implements McpConfigSyncService {
         if (StringUtils.isBlank(value)) {
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
+    }
+
+    private String resolve(String value) {
+        if (value == null) {
+            return null;
+        }
+        return environment.resolvePlaceholders(value);
     }
 
     private List<String> distinctTargetIds(List<String> targetIds) {

@@ -10,7 +10,8 @@
 
 - MySQL 主结构初始化：执行 `docs/sql/zagent_mysql.sql`
 - PgVector 结构初始化：执行 `docs/sql/zagent_pgvector.sql`
-- MCP 配置切换：修改 `src/main/resources/mcp-tools.json`，然后重启后端
+- MCP 配置切换：修改 `src/main/resources/application.yml`，然后重启后端
+- 本目录里的脚本代表历史手工切换方案；旧版本曾使用 `mcp-tools.json`
 
 也就是说，这个目录下的脚本现在主要用于“历史参考”和“问题追溯”，
 不是日常开发和联调的主流程。
