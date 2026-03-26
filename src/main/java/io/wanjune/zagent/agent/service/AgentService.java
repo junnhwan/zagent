@@ -1,7 +1,7 @@
 package io.wanjune.zagent.agent.service;
 
-import io.wanjune.zagent.model.dto.AgentRunRequest;
-import io.wanjune.zagent.model.vo.AgentResultVO;
+import io.wanjune.zagent.agent.model.AgentRunRequest;
+import io.wanjune.zagent.agent.model.AgentResultVO;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**

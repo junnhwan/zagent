@@ -4,15 +4,17 @@ import io.wanjune.zagent.agent.service.AgentService;
 import io.wanjune.zagent.agent.strategy.IExecuteStrategy;
 import io.wanjune.zagent.mapper.AiAgentFlowConfigMapper;
 import io.wanjune.zagent.mapper.AiAgentMapper;
-import io.wanjune.zagent.model.dto.AgentRunRequest;
+import io.wanjune.zagent.agent.model.AgentRunRequest;
 import io.wanjune.zagent.model.entity.AiAgent;
 import io.wanjune.zagent.model.entity.AiAgentFlowConfig;
-import io.wanjune.zagent.model.vo.AgentResultVO;
+import io.wanjune.zagent.agent.model.AgentResultVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,13 +55,16 @@ public class AgentServiceImpl implements AgentService {
         AiAgent agent = loadAgent(request.getAgentId());
         IExecuteStrategy.ExecuteContext context = buildContext(agent, request);
         IExecuteStrategy strategy = resolveStrategy(agent.getStrategy());
+        List<AiAgentFlowConfig> flowConfigs = aiAgentFlowConfigMapper.selectByAgentId(agent.getAgentId());
 
         try {
-            String result = strategy.execute(context, null);
+            String finalOutput = strategy.execute(context, null);
+            List<AgentResultVO.StepResult> steps = buildStepResults(flowConfigs, request.getInput(), finalOutput);
             return AgentResultVO.builder()
                     .agentId(agent.getAgentId())
                     .agentName(agent.getAgentName())
-                    .finalOutput(result)
+                    .finalOutput(finalOutput)
+                    .steps(steps)
                     .build();
         } catch (Exception e) {
             log.error("Agent执行失败: agentId={}", request.getAgentId(), e);
@@ -165,6 +170,41 @@ public class AgentServiceImpl implements AgentService {
         }
         String normalized = strategy.trim().toLowerCase();
         return "flow".equals(normalized) ? "plan_execute" : normalized;
+    }
+
+    /**
+     * 构建同步接口可展示的步骤结果，确保前端可以展示 sequence/clientId/input/output。
+     */
+    private List<AgentResultVO.StepResult> buildStepResults(List<AiAgentFlowConfig> flowConfigs,
+                                                            String userInput,
+                                                            String finalOutput) {
+        if (flowConfigs == null || flowConfigs.isEmpty()) {
+            return List.of(AgentResultVO.StepResult.builder()
+                    .sequence(1)
+                    .clientId("unknown")
+                    .input(userInput)
+                    .output(finalOutput)
+                    .build());
+        }
+        List<AiAgentFlowConfig> sortedConfigs = flowConfigs.stream()
+                .sorted(Comparator.comparing(config -> config.getSequence() == null ? Integer.MAX_VALUE : config.getSequence()))
+                .toList();
+
+        List<AgentResultVO.StepResult> stepResults = new ArrayList<>();
+        String stepInput = userInput;
+        for (int index = 0; index < sortedConfigs.size(); index++) {
+            AiAgentFlowConfig config = sortedConfigs.get(index);
+            boolean isLastStep = index == sortedConfigs.size() - 1;
+            String stepOutput = isLastStep ? finalOutput : "（中间步骤输出请使用流式模式查看）";
+            stepResults.add(AgentResultVO.StepResult.builder()
+                    .sequence(config.getSequence() != null ? config.getSequence() : index + 1)
+                    .clientId(config.getClientId())
+                    .input(stepInput)
+                    .output(stepOutput)
+                    .build());
+            stepInput = stepOutput;
+        }
+        return stepResults;
     }
 
 }

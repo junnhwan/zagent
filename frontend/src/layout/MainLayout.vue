@@ -1,106 +1,54 @@
 <template>
-  <el-container class="layout-container">
-    <!-- Sidebar -->
-    <el-aside :width="isCollapsed ? '64px' : '220px'" class="layout-aside">
-      <div class="logo-area" @click="isCollapsed = !isCollapsed">
-        <el-icon :size="24"><Monitor /></el-icon>
-        <span v-show="!isCollapsed" class="logo-text">ZAgent</span>
+  <div class="studio-layout">
+    <aside class="studio-aside" :class="{ collapsed: isCollapsed }">
+      <div class="brand" @click="isCollapsed = !isCollapsed">
+        <div class="brand-icon">ZA</div>
+        <div v-show="!isCollapsed" class="brand-text">
+          <h1>zagent</h1>
+          <p>Agent Studio</p>
+        </div>
       </div>
       <el-menu
-        :default-active="route.path"
+        :default-active="activeMenu"
         router
         :collapse="isCollapsed"
-        background-color="#1d1e2c"
-        text-color="#a3a6b4"
-        active-text-color="#409eff"
-        class="sidebar-menu"
+        class="menu"
       >
-        <el-menu-item index="/dashboard">
-          <el-icon><Odometer /></el-icon>
-          <template #title>仪表盘</template>
+        <el-menu-item index="/overview">
+          <el-icon><DataBoard /></el-icon>
+          <template #title>Overview</template>
         </el-menu-item>
-
-        <el-sub-menu index="resource">
-          <template #title>
-            <el-icon><Setting /></el-icon>
-            <span>资源管理</span>
-          </template>
-          <el-menu-item index="/agents">
-            <el-icon><Cpu /></el-icon>
-            <template #title>Agent 管理</template>
-          </el-menu-item>
-          <el-menu-item index="/clients">
-            <el-icon><Connection /></el-icon>
-            <template #title>Client 管理</template>
-          </el-menu-item>
-          <el-menu-item index="/models">
-            <el-icon><Coin /></el-icon>
-            <template #title>模型管理</template>
-          </el-menu-item>
-          <el-menu-item index="/apis">
-            <el-icon><Link /></el-icon>
-            <template #title>API 管理</template>
-          </el-menu-item>
-          <el-menu-item index="/prompts">
-            <el-icon><EditPen /></el-icon>
-            <template #title>提示词管理</template>
-          </el-menu-item>
-          <el-menu-item index="/advisors">
-            <el-icon><MagicStick /></el-icon>
-            <template #title>Advisor 管理</template>
-          </el-menu-item>
-          <el-menu-item index="/mcps">
-            <el-icon><SetUp /></el-icon>
-            <template #title>MCP 工具</template>
-          </el-menu-item>
-        </el-sub-menu>
-
-        <el-sub-menu index="testing">
-          <template #title>
-            <el-icon><Promotion /></el-icon>
-            <span>测试中心</span>
-          </template>
-          <el-menu-item index="/chat">
-            <el-icon><ChatDotRound /></el-icon>
-            <template #title>对话测试</template>
-          </el-menu-item>
-          <el-menu-item index="/agent-test">
-            <el-icon><VideoPlay /></el-icon>
-            <template #title>Agent 测试</template>
-          </el-menu-item>
-        </el-sub-menu>
-
-        <el-menu-item index="/rag">
-          <el-icon><Files /></el-icon>
-          <template #title>RAG 管理</template>
-        </el-menu-item>
+        <el-menu-item index="/playground"><el-icon><Promotion /></el-icon><template #title>Playground</template></el-menu-item>
+        <el-menu-item index="/workflows"><el-icon><Operation /></el-icon><template #title>Workflows</template></el-menu-item>
+        <el-menu-item index="/tools"><el-icon><Tools /></el-icon><template #title>Tools</template></el-menu-item>
+        <el-menu-item index="/knowledge"><el-icon><Reading /></el-icon><template #title>Knowledge</template></el-menu-item>
+        <el-menu-item index="/observability"><el-icon><Histogram /></el-icon><template #title>Observability</template></el-menu-item>
+        <el-menu-item index="/settings"><el-icon><Setting /></el-icon><template #title>Settings</template></el-menu-item>
       </el-menu>
-    </el-aside>
-
-    <!-- Main -->
-    <el-container>
-      <el-header class="layout-header">
-        <div class="header-left">
-          <el-breadcrumb separator="/">
-            <el-breadcrumb-item>ZAgent Admin</el-breadcrumb-item>
-            <el-breadcrumb-item v-if="route.meta.title">{{ route.meta.title }}</el-breadcrumb-item>
-          </el-breadcrumb>
+    </aside>
+    <main class="studio-main">
+      <header class="studio-header">
+        <div>
+          <h2>{{ route.meta.title || 'Agent Studio' }}</h2>
+          <p>一个可配置、可观察、可演示的 Agent 编排实验室</p>
         </div>
-        <div class="header-right">
-          <el-tooltip content="刷新所有缓存" placement="bottom">
-            <el-button :icon="Refresh" circle @click="handleInvalidateAll" :loading="cacheLoading" />
+        <div class="header-actions">
+          <el-button text @click="$router.push('/playground')">快速演示</el-button>
+          <el-button text @click="$router.push('/settings')">配置入口</el-button>
+          <el-tooltip content="刷新缓存" placement="bottom">
+            <el-button :icon="Refresh" circle :loading="cacheLoading" @click="handleInvalidateAll" />
           </el-tooltip>
         </div>
-      </el-header>
-      <el-main class="layout-main">
+      </header>
+      <section class="studio-content">
         <router-view />
-      </el-main>
-    </el-container>
-  </el-container>
+      </section>
+    </main>
+  </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -109,14 +57,20 @@ import { cacheApi } from '../api'
 const route = useRoute()
 const isCollapsed = ref(false)
 const cacheLoading = ref(false)
+const rootMenus = ['/overview', '/playground', '/workflows', '/tools', '/knowledge', '/observability', '/settings']
+
+const activeMenu = computed(() => {
+  const first = `/${route.path.split('/').filter(Boolean)[0] || 'overview'}`
+  return rootMenus.includes(first) ? first : '/overview'
+})
 
 const handleInvalidateAll = async () => {
   cacheLoading.value = true
   try {
     await cacheApi.invalidateAll()
-    ElMessage.success('缓存已全部刷新')
+    ElMessage.success('缓存刷新成功')
   } catch {
-    // interceptor handles the error
+    ElMessage.error('缓存刷新失败，请稍后重试')
   } finally {
     cacheLoading.value = false
   }
@@ -124,41 +78,106 @@ const handleInvalidateAll = async () => {
 </script>
 
 <style scoped>
-.layout-container {
-  height: 100vh;
+.studio-layout {
+  display: grid;
+  grid-template-columns: 248px 1fr;
+  min-height: 100vh;
+  background: radial-gradient(circle at top left, #f5f8ff 0%, #f6f7fb 60%, #f4f6fb 100%);
 }
-.layout-aside {
-  background-color: #1d1e2c;
-  transition: width 0.3s;
-  overflow-x: hidden;
+.studio-aside {
+  width: 248px;
+  border-right: 1px solid #e9edf5;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(6px);
+  transition: width 0.2s ease;
 }
-.logo-area {
+.studio-aside.collapsed {
+  width: 64px;
+}
+.brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 16px;
+  gap: 12px;
+  padding: 18px 16px 14px;
   cursor: pointer;
-  color: #409eff;
+}
+.brand-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #3f67ff, #6558ff);
+  color: #fff;
+  font-size: 12px;
   font-weight: 700;
-  border-bottom: 1px solid #2d2e3e;
 }
-.logo-text {
+.brand-text h1 {
+  margin: 0;
   font-size: 18px;
-  white-space: nowrap;
+  line-height: 1.1;
 }
-.sidebar-menu {
+.brand-text p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #69748b;
+}
+.menu {
   border-right: none;
+  background: transparent;
+  padding: 8px 10px;
 }
-.layout-header {
+.studio-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.studio-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #e4e7ed;
-  background: #fff;
+  padding: 18px 24px;
+  border-bottom: 1px solid #e8ecf5;
+  background: rgba(255, 255, 255, 0.66);
+  backdrop-filter: blur(4px);
 }
-.layout-main {
-  background: #f5f7fa;
-  min-height: 0;
-  overflow-y: auto;
+.studio-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.studio-header p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #6f7890;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.studio-content {
+  padding: 20px 24px 24px;
+  overflow: auto;
+}
+:deep(.el-menu-item),
+:deep(.el-sub-menu__title) {
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+:deep(.el-menu-item.is-active) {
+  background: #eaf0ff;
+  color: #3155de;
+}
+@media (max-width: 992px) {
+  .studio-layout {
+    grid-template-columns: 76px 1fr;
+  }
+  .studio-aside {
+    width: 76px;
+  }
+  .brand-text,
+  .studio-header p {
+    display: none;
+  }
 }
 </style>
