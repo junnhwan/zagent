@@ -154,6 +154,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { agentApi, agentRunApi } from '../api'
+import { saveLastObservation } from '../utils/observability'
 
 const router = useRouter()
 const route = useRoute()
@@ -252,6 +253,15 @@ const runAgent = async () => {
     }
     finalOutput.value = result?.finalOutput || ''
     steps.value = Array.isArray(result?.steps) ? result.steps : []
+    saveLastObservation({
+      lens: selectedMode.value,
+      lensLabel: activeMode.value.label,
+      agentId: resultMeta.value.agentId,
+      agentName: resultMeta.value.agentName,
+      input: input.value.trim(),
+      finalOutput: finalOutput.value,
+      steps: steps.value
+    })
     ElMessage.success('演示运行完成')
   } catch {
     finalOutput.value = ''

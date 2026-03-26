@@ -1,5 +1,18 @@
 # Contract Review（Evaluator）
 
+## 结论（最新：Sprint 4 合同审查）
+- 复审轮次：第 2 次
+- 结论：**已批准（可开工）**
+- 审查时间：2026-03-26
+- 对应合同：`artifacts/sprint_contract.md`（Sprint 4 - Observability 与简历化收尾）
+
+## 审查要点与证据（Sprint 4）
+- Observability 口径闭合：已写死数据来源为前端 `localStorage`，固定 key `za.lastRun`、最小 schema 与回退行为，避免诱发超范围后端改动。
+- 聚合口径闭合：已写死接口来源为 `mcpApi.runtimeStatus` 与 `ragApi.tags`，并定义失败回退（显示“不可用/请求失败”，不阻塞核心验收）。
+- 文档口径闭合：README 固定为 `README.md`，演示脚本文档固定为 `docs/demo_script.md`。
+
+---
+
 ## 结论（最新：Sprint 3 合同审查）
 - 复审轮次：第 2 次
 - 结论：**已批准**

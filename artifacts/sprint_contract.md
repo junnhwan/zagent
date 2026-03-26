@@ -2,70 +2,63 @@
 
 ## 文档状态
 - 状态：草稿
-- 对应 Sprint：Sprint 3 - 后端模块化单体重构
+- 对应 Sprint：Sprint 4 - Observability 与简历化收尾
 - 最后更新时间：2026-03-26
 
-> 说明：Sprint 2 合同已归档至 `artifacts/sprint_contract_sprint2.md`。
+> 说明：Sprint 3 合同已归档至 `artifacts/sprint_contract_sprint3.md`。
 
 ## 一、Sprint 目标
-- 将后端从“按技术层堆文件”的结构，重整为“领域模块 + 模块内分层”的模块化单体结构，并确保现有对外 API 行为稳定（路径、请求体、响应体保持兼容）。
+- 让项目在“演示与简历呈现”上闭环：用户能在 Observability 中拿到一次运行的证据（steps + 运行态信息），并且 README 与演示脚本能支撑 3~5 分钟面试讲解。
 
 ## 二、Included Scope
-- 领域模块边界落地（以包结构为主，不拆 Maven module）：对齐 `product_spec.md` 中规划的 `agent/tooling/knowledge/runtime/observability/configcenter/web`。
-- `web` 入口层收敛：
-  - 将 `controller` 下的入口按领域归位到统一 `web` 包（建议结构：`web.agent` / `web.chat` / `web.rag` / `web.admin` / `web.mcp`）。
-  - 对外契约（DTO/VO）随入口层归位（建议放置到 `web.contract` 或 `web.*.contract`），减少通用 `model/dto`、`model/vo` 的“全局共享”。
-- 依赖方向约束（通过包结构与引用修复体现）：
-  - `web` 只能依赖领域服务与契约，不反向依赖 `web`。
-  - 领域服务不直接依赖具体 Controller/VO，必要时使用模块内模型或最小契约接口。
-- 最小迁移原则：
-  - 以“移动包 + 调整 Spring/MyBatis 扫描 + 修复引用”为主。
-  - 不引入新功能、不改表结构、不做大范围重写。
-- 回归验证：
-  - `mvn "-DskipTests" compile` 必须通过。
-  - 受影响的单元测试必须通过，固定测试清单为：`mvn "-Dtest=AiClientAssemblyServiceImplTest,McpTransportConfigParserImplTest,McpBindingResolverImplTest,ReActExecuteStrategyTest,FlowExecuteStrategyTest" test`。
+- Observability 页面增强（以演示可用为第一优先级）
+  - 能展示“最近一次 Playground 同步运行”的结果摘要（至少包含：范式视角、Agent、最终输出摘要、steps 数量）。
+  - 能展示 steps 明细（复用 `AgentResultVO.steps`，至少展示 `sequence/clientId/input/output`）。
+  - 提供至少一种“演示友好导出能力”：复制 steps JSON 或下载为文件（二选一即可，但必须可用）。
+  - 最近一次运行数据来源固定为前端 `localStorage`，固定 key 为 `za.lastRun`，由 Playground 同步运行成功后写入。
+  - `za.lastRun` 最小数据结构固定为：`lens`、`agentId`、`agentName`、`finalOutput`、`steps`、`createdAt`。
+  - 当 `za.lastRun` 不存在或解析失败时，Observability 必须显示“未发现运行记录 + 引导去 Playground 运行一次”，不得出现空白页。
+- 运行态可见性（只做现有能力聚合，不新增复杂链路）
+  - MCP runtime status 使用现有 `mcpApi.runtimeStatus` 接口，若请求失败显示“不可用/请求失败”，不阻塞核心验收。
+  - RAG tags 使用现有 `ragApi.tags` 接口，若请求失败显示“不可用/请求失败”，不阻塞核心验收。
+- README 重写（简历型叙事）
+  - README 必须包含：一句话定位、能力地图（Plan&Execute/ReAct/Reflection/Tool Use/RAG/Observability）、North Star Demo 路径、运行方式（后端/前端命令）、后端模块边界（`agent/tooling/knowledge/runtime/observability/configcenter/web`）与讲解要点。
+- 演示脚本沉淀
+  - 提供一份 3~5 分钟演示脚本，包含“先讲什么、后演示什么、演示时说什么、常见追问怎么答”。
+  - 演示脚本文档路径固定为 `docs/demo_script.md`。
 
-## 三、最小迁移清单
-- Controller 迁移（保持 API 路径不变）：
-  - `AgentController` -> `io.wanjune.zagent.web.agent`
-  - `ChatController` -> `io.wanjune.zagent.web.chat`
-  - `RagController` -> `io.wanjune.zagent.web.rag`
-  - `AdminController` -> `io.wanjune.zagent.web.admin`
-- 高频契约迁移（共享模型收缩）：
-  - `AgentRunRequest` -> `io.wanjune.zagent.agent.model.AgentRunRequest`
-  - `AgentResultVO` -> `io.wanjune.zagent.agent.model.AgentResultVO`
-- 引用修复范围：
-  - `AgentService`
-  - `AgentServiceImpl`
-  - `AgentToolCallback`
-  - 上述 Controller 的 import 与包声明
+## 三、Excluded Scope
+- 不新增与主线无关功能。
+- 不做新的后端模块化/大重构，不改数据库结构。
+- 不引入新的前端框架或大规模视觉重做。
+- 不强制接入完整 trace/tool-call 后端链路（本 Sprint 以 steps + 运行态聚合为主）。
 
-## 四、Excluded Scope
-- 不拆微服务。
-- 不强制升级为 Maven 多模块。
-- 不修改数据库结构与存量数据。
-- 不变更对外 API 路径与 wire contract（除非属于修复 bug 且能提供兼容策略与证据）。
-- 不做 Observability 的真实数据链路接入（留到后续 Sprint）。
+## 四、用户可感知行为
+- 用户应能够：在 Playground 跑完一次同步运行后，到 Observability 看到该次运行的 steps 证据，并可复制/导出。
+- 用户应能够：在 README 的指引下完成一次演示（从启动到跑通 Demo）并知道项目亮点在哪里。
 
-## 五、用户可感知行为
-- 用户应能够：继续正常使用当前前端（至少能完成 Overview -> Playground -> 同步运行 -> 展示 steps 的主演示路径）。
-- 用户应能够：不需要理解内部包迁移即可运行与演示系统（行为保持一致）。
+## 五、验证计划
+- 步骤 1：前端构建：`frontend` 目录 `npm run build` 通过。
+- 步骤 2：后端编译：`mvn "-DskipTests" compile` 通过。
+- 步骤 3：Observability 验收：
+  - 先在 Playground 触发一次同步运行（`/api/agent/run`），再进入 Observability；
+  - Observability 能显示该次运行摘要与 steps 列表；
+  - 导出能力可用（复制 JSON 或下载文件）。
+- 步骤 4：README 验收：
+  - README 中包含定位、能力地图、North Star Demo、运行方式、模块边界与讲解要点；
+  - 按 README 步骤能跑通一次 Demo（至少到“Playground 同步运行 + Observability 查看 steps”）。
+- 步骤 5：演示脚本验收：
+  - 演示脚本文档存在，且完整覆盖 3~5 分钟节奏。
 
-## 六、验证计划
-- 步骤 1：后端编译验证：执行 `mvn "-DskipTests" compile` 通过。
-- 步骤 2：后端测试验证：执行固定测试集 `mvn "-Dtest=AiClientAssemblyServiceImplTest,McpTransportConfigParserImplTest,McpBindingResolverImplTest,ReActExecuteStrategyTest,FlowExecuteStrategyTest" test` 通过。
-- 步骤 3：接口契约抽查：确认关键入口路径未变更（至少包含 `/api/agent/*`、`/api/chat/*`、`/api/rag/*`、`/api/admin/*`）。
-- 步骤 4：字段级 wire contract 抽查：确认 `/api/agent/run` 的返回结构仍包含 `agentId`、`agentName`、`finalOutput`、`steps`，且 `steps[*]` 包含 `sequence`、`clientId`、`input`、`output`。
-- 步骤 5：前端构建验证：执行 `frontend` 目录 `npm run build` 通过（确保后端接口变更未导致前端编译期依赖出错）。
+## 六、风险与假设
+- 风险：若 Playground 不保存最近一次运行结果，则 Observability 需要先补“运行结果缓存/持久化”机制（建议前端 localStorage/内存持有，避免后端大改）。
+- 假设：Sprint 4 不追求“全链路观测”，只要能提供“可复现证据 + 可讲解叙事”即可达标。
 
-## 七、风险与假设
-- 风险：包迁移容易引入 Spring 扫描、MyBatis Mapper 扫描、序列化类型引用等隐性问题。
-- 假设：本轮以“结构重整”为主，业务逻辑尽量不改；必要修改以“保持兼容”为唯一目标。
-
-## 八、Definition of Done
-- [ ] 合同中的核心用户行为已实现（对外接口行为不回退）
+## 七、Definition of Done
+- [ ] 合同中的核心用户行为已实现
+- [ ] `frontend` 构建通过
 - [ ] `mvn "-DskipTests" compile` 通过
-- [ ] 受影响测试集通过（命令与结果记录在 `artifacts/build_report.md`）
-- [ ] 关键 API 路径与 wire contract 兼容
+- [ ] Observability 能展示并导出最近一次运行 steps
+- [ ] README 与演示脚本可支撑 3~5 分钟面试讲解
 - [ ] 本轮排除项未被误做进来
 - [ ] 已知问题记录在 `artifacts/build_report.md`

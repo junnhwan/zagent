@@ -1,39 +1,38 @@
 # Build Report
 
 ## 文档状态
-- 对应 Sprint：Sprint 3 - 后端模块化单体重构
+- 对应 Sprint：Sprint 4 - Observability 与简历化收尾
 - 最后更新时间：2026-03-26
-- 结论：待 Evaluator 最终 QA
+- 结论：已完成实现与自测，待归档
 
 ## 一、实现结论
-- 已完成后端“最小有效重构”：控制器从 `controller` 归位到 `web` 分层包，保持所有对外 API 路径不变。
-- 已收缩一组高频共享契约：`AgentRunRequest`、`AgentResultVO` 从全局 `model` 迁移到 `agent.model`，并完成全量引用修复。
-- 本轮未改数据库结构、未引入新业务能力、未变更接口 wire contract。
+- Observability 已从占位说明升级为可演示证据面板，可展示最近一次 Playground 同步运行的摘要与 steps。
+- 运行态聚合已接入现有接口：MCP runtime status 与 RAG tags 概览。
+- README 与演示脚本已重写，可直接支撑 3~5 分钟面试讲解。
 
 ## 二、已实现内容
-- 控制器归位（路径保持不变）：
-  - `AgentController` -> `io.wanjune.zagent.web.agent`
-  - `ChatController` -> `io.wanjune.zagent.web.chat`
-  - `RagController` -> `io.wanjune.zagent.web.rag`
-  - `AdminController` -> `io.wanjune.zagent.web.admin`
-- 契约迁移（共享模型收缩）：
-  - `AgentRunRequest` -> `io.wanjune.zagent.agent.model.AgentRunRequest`
-  - `AgentResultVO` -> `io.wanjune.zagent.agent.model.AgentResultVO`
-- 依赖修复：
-  - 已修复 `AgentService`、`AgentServiceImpl`、`AgentToolCallback`、`AgentController` 等关键引用。
+- 运行证据落地
+  - Playground 同步运行成功后写入 `localStorage`，固定 key 为 `za.lastRun`。
+  - 存储结构包含：`lens`、`agentId`、`agentName`、`finalOutput`、`steps`、`createdAt`。
+- Observability 页面增强
+  - 展示最近一次运行摘要：范式视角、Agent、步骤数、记录时间、最终输出摘要。
+  - 展示 steps 明细：`sequence/clientId/input/output`。
+  - 支持复制观测 JSON 与下载观测文件。
+  - 聚合展示 MCP runtime status 与 RAG tags 概览。
+  - 缺失记录时显示“未发现运行记录 + 引导去 Playground”。
+  - MCP/RAG 请求失败时显示“不可用：请求失败”，不阻塞核心验收。
+- 文档交付
+  - `README.md` 已重写，包含定位、能力地图、North Star Demo、运行方式、模块边界、讲解要点。
+  - `docs/demo_script.md` 已更新，覆盖 3~5 分钟演示节奏与常见追问。
 
 ## 三、自测与验证
-- 编译验证：
+- 前端构建验证：
+  - `Set-Location frontend; npm run build` 通过。
+- 后端编译验证：
   - `mvn "-DskipTests" compile` 通过。
-- 受影响测试验证（策略 + MCP + 装配）：
-  - `mvn "-Dtest=AiClientAssemblyServiceImplTest,McpTransportConfigParserImplTest,McpBindingResolverImplTest,ReActExecuteStrategyTest,FlowExecuteStrategyTest" test` 通过。
-  - 结果：`Tests run: 15, Failures: 0, Errors: 0, Skipped: 0`。
-- 前端兼容性验证：
-  - `frontend` 目录执行 `npm run build` 通过（已清理 `frontend/dist`）。
-- 接口兼容性验证：
-  - `@RequestMapping` 关键前缀保持不变：`/api/agent`、`/api/chat`、`/api/rag`、`/api/admin`。
+- 构建产物处理：
+  - 已清理 `frontend/dist`。
 
 ## 四、已知问题
-- Maven 输出仍包含历史依赖的弃用告警（与本轮重构无直接关系）。
-- Mockito 动态 agent 告警仍存在（测试通过，不阻塞本 Sprint 验收）。
-- 前端构建仍有 chunk size 警告（历史问题，非本轮重构引入）。
+- 前端构建仍有 chunk size warning（历史问题，非本轮新增）。
+- 本轮 Observability 以“最近一次运行证据 + 运行态聚合”为主，不包含完整 trace/tool-call 后端链路。
