@@ -1,0 +1,11 @@
+[zagent-amap-sse] Amap SSE MCP server starting
+[zagent-amap-sse] SSE endpoint: http://127.0.0.1:18081/sse
+[zagent-amap-sse] Message endpoint: http://127.0.0.1:18081/messages/
+INFO:     127.0.0.1:1470 - "GET /sse HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1471 - "POST /messages/?session_id=2ef4e70b643e4291aa93d56a14f84568 HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:2230 - "GET /sse HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6392 - "GET /sse HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6393 - "POST /messages/?session_id=2e95213070fc4eb995c222daee9ec9cd HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:6393 - "POST /messages/?session_id=2e95213070fc4eb995c222daee9ec9cd HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:6393 - "POST /messages/?session_id=2e95213070fc4eb995c222daee9ec9cd HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:5658 - "POST /messages/?session_id=2e95213070fc4eb995c222daee9ec9cd HTTP/1.1" 202 Accepted
