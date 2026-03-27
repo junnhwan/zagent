@@ -76,6 +76,7 @@ import { ref, onMounted } from 'vue'
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { mcpApi } from '../api'
+import { normalizeMcpRuntimeStatus } from '../utils/mcpRuntime'
 
 const loading = ref(false)
 const mcps = ref([])
@@ -87,7 +88,7 @@ const fetchMcps = async () => {
 }
 
 const fetchRuntimeStatus = async () => {
-  try { runtimeStatus.value = await mcpApi.runtimeStatus() || {} } catch { /* */ }
+  try { runtimeStatus.value = normalizeMcpRuntimeStatus(await mcpApi.runtimeStatus()) } catch { /* */ }
 }
 
 onMounted(() => { fetchMcps(); fetchRuntimeStatus() })

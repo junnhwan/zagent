@@ -65,3 +65,20 @@
   - `mvn "-DskipTests" compile` 通过。
 - 已补充同步运行超时修复：前端 `agentRunApi.run` 不再设置固定 120 秒超时，避免“后端仍在执行、前端先判失败”。
 - 已补充后端同步运行耗时日志：`Agent同步执行开始/完成/失败`，便于定位响应何时真正返回。
+
+## 八、补充变更：MCP SSE 兼容修复与前端状态纠偏
+- 已新增 `tools/mcp_transport_compat.py`，统一承接 Python SSE MCP 服务的兼容层与日志降噪逻辑。
+- `tools/amap_sse_mcp.py` 与 `tools/git_repo_mcp.py` 已接入同一套兼容中间件：
+  - 缺失 `Content-Type` 时自动补为 `application/json`，并降为 debug 级别日志。
+  - 对 `/messages/` 的空 POST 请求返回 `202 Accepted`，避免 FastMCP 因空 JSON 直接报 `EOF` / `400`。
+  - 对 uvicorn 的 `Unsupported upgrade request` / `No supported WebSocket library detected` 噪音告警加过滤，控制台更干净。
+- 已新增回归测试 `tools/test_mcp_transport_compat.py`，覆盖：
+  - 缺失 `Content-Type` 的兼容补齐；
+  - 空 POST 请求的容错返回；
+  - uvicorn 升级噪音日志过滤。
+- 已新增前端工具 `frontend/src/utils/mcpRuntime.js`，把后端返回的 `initialized/ready` 统一归一成前端使用的 `connected`。
+- `frontend/src/views/Overview.vue`、`frontend/src/views/ObservabilityHub.vue`、`frontend/src/views/McpManage.vue` 已接入归一化逻辑，修复“后端成功但前端仍显示未连接/0/N”的误判。
+- 本轮补充验证：
+  - `python` 单测：`tools.test_amap_sse_mcp`、`tools.test_mcp_transport_compat` 通过。
+  - `mvn "-DskipTests" compile` 通过。
+  - `Set-Location frontend; npm run build` 通过。

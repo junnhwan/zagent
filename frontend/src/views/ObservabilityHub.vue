@@ -115,6 +115,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { mcpApi, ragApi } from '../api'
+import { normalizeMcpRuntimeStatus } from '../utils/mcpRuntime'
 import { exportObservationToFile, loadLastObservation } from '../utils/observability'
 
 const observation = ref(null)
@@ -128,7 +129,7 @@ const runtimeEntries = computed(() => Object.entries(runtimeStatus.value).map(([
 onMounted(async () => {
   observation.value = loadLastObservation()
   try {
-    runtimeStatus.value = (await mcpApi.runtimeStatus()) || {}
+    runtimeStatus.value = normalizeMcpRuntimeStatus(await mcpApi.runtimeStatus())
     runtimeLoadError.value = false
   } catch {
     runtimeStatus.value = {}

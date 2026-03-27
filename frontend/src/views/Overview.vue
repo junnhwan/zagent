@@ -116,6 +116,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { agentApi, mcpApi, ragApi } from '../api'
+import { normalizeMcpRuntimeStatus } from '../utils/mcpRuntime'
 import { loadLastObservation } from '../utils/observability'
 
 const quickActions = [
@@ -170,7 +171,7 @@ onMounted(async () => {
   }
 
   try {
-    runtimeStatus.value = (await mcpApi.runtimeStatus()) || {}
+    runtimeStatus.value = normalizeMcpRuntimeStatus(await mcpApi.runtimeStatus())
   } catch {
     runtimeStatus.value = {}
   }

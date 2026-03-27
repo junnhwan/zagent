@@ -29,6 +29,8 @@ from collections import Counter
 
 from mcp.server.fastmcp import FastMCP
 
+from tools.mcp_transport_compat import McpSseCompatibilityMiddleware, install_uvicorn_upgrade_noise_filter
+
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -46,31 +48,13 @@ GIT_TIMEOUT = 30
 
 mcp = FastMCP("zagent-git-repo")
 logger = logging.getLogger("zagent-git-repo")
+install_uvicorn_upgrade_noise_filter()
 
 
 # ---------------------------------------------------------------------------
 # ASGI middleware (same pattern as amap_sse_mcp.py)
 # ---------------------------------------------------------------------------
-class MessageContentTypeCompatibilityMiddleware:
-    """Inject a default Content-Type header when the client omits it."""
 
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope.get("type") == "http" and scope.get("method", "").upper() == "POST":
-            path = (scope.get("path") or "").rstrip("/")
-            message_path = MCP_MESSAGE_PATH.rstrip("/")
-            if path == message_path:
-                headers = list(scope.get("headers", []))
-                has_content_type = any(key.lower() == b"content-type" for key, _ in headers)
-                if not has_content_type:
-                    logger.warning("Missing Content-Type header in POST request, fallback to application/json")
-                    headers.append((b"content-type", b"application/json"))
-                    scope = dict(scope)
-                    scope["headers"] = headers
-
-        await self.app(scope, receive, send)
 
 
 # ---------------------------------------------------------------------------
@@ -418,7 +402,7 @@ def get_repo_summary(
 mcp.settings.sse_path = MCP_SSE_PATH
 mcp.settings.message_path = MCP_MESSAGE_PATH
 app = mcp.sse_app()
-app = MessageContentTypeCompatibilityMiddleware(app)
+app = McpSseCompatibilityMiddleware(app, MCP_MESSAGE_PATH, logger)
 
 
 if __name__ == "__main__":
