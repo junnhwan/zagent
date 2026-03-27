@@ -11,43 +11,43 @@ const routes = [
         path: 'overview',
         name: 'Overview',
         component: () => import('../views/Overview.vue'),
-        meta: { title: 'Overview' }
+        meta: { title: '工作台' }
       },
       {
         path: 'playground',
         name: 'Playground',
         component: () => import('../views/Playground.vue'),
-        meta: { title: 'Playground' }
+        meta: { title: '运行台' }
       },
       {
         path: 'workflows',
         name: 'Workflows',
         component: () => import('../views/Workflows.vue'),
-        meta: { title: 'Workflows' }
+        meta: { title: '工作流' }
       },
       {
         path: 'tools',
         name: 'ToolsHub',
         component: () => import('../views/ToolsHub.vue'),
-        meta: { title: 'Tools' }
+        meta: { title: '工具' }
       },
       {
         path: 'knowledge',
         name: 'KnowledgeHub',
         component: () => import('../views/KnowledgeHub.vue'),
-        meta: { title: 'Knowledge' }
+        meta: { title: '知识库' }
       },
       {
         path: 'observability',
         name: 'ObservabilityHub',
         component: () => import('../views/ObservabilityHub.vue'),
-        meta: { title: 'Observability' }
+        meta: { title: '运行记录' }
       },
       {
         path: 'settings',
         name: 'SettingsHub',
         component: () => import('../views/SettingsHub.vue'),
-        meta: { title: 'Settings' }
+        meta: { title: '配置' }
       },
       {
         path: 'settings/agents',
@@ -95,19 +95,19 @@ const routes = [
         path: 'chat',
         name: 'ChatTest',
         component: () => import('../views/ChatTest.vue'),
-        meta: { title: 'Chat Playground' }
+        meta: { title: '聊天测试' }
       },
       {
         path: 'agent-test',
         name: 'AgentTest',
         component: () => import('../views/AgentTest.vue'),
-        meta: { title: 'Agent Playground' }
+        meta: { title: '旧版运行页' }
       },
       {
         path: 'rag',
         name: 'RagManage',
         component: () => import('../views/RagManage.vue'),
-        meta: { title: 'Knowledge Base' }
+        meta: { title: '知识库管理' }
       }
     ]
   },

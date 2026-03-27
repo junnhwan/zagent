@@ -54,3 +54,12 @@
 - 本轮补充验证：
   - `mvn "-Dtest=McpModeAdminServiceImplTest,McpBindingResolverImplTest" test` 通过。
   - `mvn "-DskipTests" compile` 通过。
+
+## 七、补充变更：前端收敛为轻工作台
+- 已将前端首页从“演示叙事页”收敛为轻工作台：首页展示快捷操作、最近一次运行、系统状态与常用配置入口。
+- 已将 Playground 收敛为纯运行台：删除范式切换与演示提示，只保留 Agent、输入、输出和步骤结果。
+- 已将主导航收敛为高频入口：工作台、运行台、知识库、运行记录、配置；`Workflows` 与 `Tools` 不再作为一级重点入口。
+- 已统一收缩文案与视觉：去掉首页和主路径中的“演示 / 面试 / 讲解”表述，减弱渐变和过强阴影。
+- 本轮补充验证：
+  - `Set-Location frontend; npm run build` 通过。
+  - `mvn "-DskipTests" compile` 通过。
