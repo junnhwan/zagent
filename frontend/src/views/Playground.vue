@@ -87,13 +87,44 @@
       </div>
     </section>
 
-    <section class="section-block" v-if="resultMeta.agentId || finalOutput || steps.length">
+    <section class="section-block" v-if="showResultSection">
+      <el-alert
+        v-if="running"
+        class="result-alert"
+        type="info"
+        :closable="false"
+        show-icon
+        title="Agent 正在运行"
+        description="同步模式会等待完整结果返回，请稍等片刻。"
+      />
+      <el-alert
+        v-else-if="runState === 'error'"
+        class="result-alert"
+        type="error"
+        :closable="false"
+        show-icon
+        title="本次运行前端未拿到可展示结果"
+        :description="runError || '请优先检查浏览器网络请求和后端日志。'"
+      />
+      <el-alert
+        v-else-if="runState === 'success' && !finalOutput && !steps.length"
+        class="result-alert"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="运行已完成，但返回内容为空"
+        description="这通常意味着后端没有返回可展示的 finalOutput，建议检查 Agent 流程配置。"
+      />
       <div class="result-grid">
         <article class="info-card result-summary">
           <div class="section-heading">
             <h3>运行摘要</h3>
           </div>
           <div class="summary-list">
+            <div>
+              <span>运行状态</span>
+              <strong>{{ runStatusLabel }}</strong>
+            </div>
             <div>
               <span>当前视角</span>
               <strong>{{ activeMode.label }}</strong>
@@ -192,12 +223,28 @@ const agentId = ref('')
 const input = ref('')
 const maxStep = ref(3)
 const running = ref(false)
+const runState = ref('idle')
+const runError = ref('')
 const finalOutput = ref('')
 const steps = ref([])
 const resultMeta = ref({ agentId: '', agentName: '' })
 
 const activeMode = computed(() => modes.find((mode) => mode.value === selectedMode.value) || modes[1])
 const canRun = computed(() => agentId.value && input.value.trim() && !running.value)
+const hasResult = computed(() => Boolean(resultMeta.value.agentId || finalOutput.value || steps.value.length))
+const showResultSection = computed(() => runState.value !== 'idle' || hasResult.value)
+const runStatusLabel = computed(() => {
+  if (running.value) {
+    return '运行中'
+  }
+  if (runState.value === 'success') {
+    return '已完成'
+  }
+  if (runState.value === 'error') {
+    return '失败'
+  }
+  return '未开始'
+})
 
 const syncModeWithRoute = () => {
   const mode = route.query.mode
@@ -235,6 +282,8 @@ const runAgent = async () => {
   }
 
   running.value = true
+  runState.value = 'running'
+  runError.value = ''
   finalOutput.value = ''
   steps.value = []
   resultMeta.value = { agentId: '', agentName: '' }
@@ -253,19 +302,24 @@ const runAgent = async () => {
     }
     finalOutput.value = result?.finalOutput || ''
     steps.value = Array.isArray(result?.steps) ? result.steps : []
-    saveLastObservation({
-      lens: selectedMode.value,
-      lensLabel: activeMode.value.label,
-      agentId: resultMeta.value.agentId,
-      agentName: resultMeta.value.agentName,
-      input: input.value.trim(),
-      finalOutput: finalOutput.value,
-      steps: steps.value
-    })
+    runState.value = 'success'
+    try {
+      saveLastObservation({
+        lens: selectedMode.value,
+        lensLabel: activeMode.value.label,
+        agentId: resultMeta.value.agentId,
+        agentName: resultMeta.value.agentName,
+        input: input.value.trim(),
+        finalOutput: finalOutput.value,
+        steps: steps.value
+      })
+    } catch (observationError) {
+      ElMessage.warning(`运行结果已展示，但写入观测记录失败：${observationError?.message || '未知错误'}`)
+    }
     ElMessage.success('演示运行完成')
-  } catch {
-    finalOutput.value = ''
-    steps.value = []
+  } catch (error) {
+    runState.value = 'error'
+    runError.value = error?.message || '运行失败'
   } finally {
     running.value = false
   }
@@ -348,6 +402,10 @@ const copyStepsJson = async () => {
   gap: 12px;
   flex-wrap: wrap;
   margin-top: 16px;
+}
+
+.result-alert {
+  margin-bottom: 16px;
 }
 
 .result-grid {
