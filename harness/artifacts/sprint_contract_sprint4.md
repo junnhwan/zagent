@@ -59,4 +59,4 @@
 - [ ] Observability 能展示并导出最近一次运行 steps
 - [ ] README 与演示脚本可支撑 3~5 分钟面试讲解
 - [ ] 本轮排除项未被误做进来
-- [ ] 已知问题记录在 `artifacts/build_report.md`
+- [ ] 已知问题记录在 `harness/artifacts/build_report.md`

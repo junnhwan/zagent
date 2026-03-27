@@ -66,5 +66,7 @@ cd frontend && npm run build
   - 后端完成模块化单体骨架重构且 API 兼容。
 
 ## 7. 相关文档
-- Sprint 规划与实施工件：`artifacts/`
+- Harness 工作流目录：`harness/`
+- Sprint 规划与实施工件：`harness/artifacts/`
+- 三代理角色说明：`harness/agents/`
 - 演示脚本：`docs/demo_script.md`

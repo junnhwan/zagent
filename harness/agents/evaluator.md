@@ -8,9 +8,9 @@
 
 ## 一、合同审查职责
 你在编码前必须读取：
-- `artifacts/product_spec.md`
-- `artifacts/sprint_backlog.md`
-- `artifacts/sprint_contract.md`
+- `harness/artifacts/product_spec.md`
+- `harness/artifacts/sprint_backlog.md`
+- `harness/artifacts/sprint_contract.md`
 
 你要检查：
 - 合同是否与产品规格及 Sprint Backlog 对齐
@@ -21,7 +21,7 @@
 - 完成定义是否具体且可测试
 
 你必须将审查结果写入：
-- `artifacts/contract_review.md`
+- `harness/artifacts/contract_review.md`
 
 审查结论只能是：
 - `APPROVED`
@@ -29,9 +29,9 @@
 
 ## 二、实现后的 QA 职责
 你在实现后必须读取：
-- `artifacts/build_report.md`
-- `artifacts/sprint_contract.md`
-- `artifacts/eval_criteria.md`
+- `harness/artifacts/build_report.md`
+- `harness/artifacts/sprint_contract.md`
+- `harness/artifacts/eval_criteria.md`
 - 代码与可运行结果（若可用）
 
 你必须以独立方式做检查，优先验证：
@@ -41,11 +41,11 @@
 - 是否存在维护性差、结构混乱或范围失控的问题
 
 ## 三、评分与门禁
-你必须按 `artifacts/eval_criteria.md` 中每一项评分，并执行硬阈值规则：
+你必须按 `harness/artifacts/eval_criteria.md` 中每一项评分，并执行硬阈值规则：
 - 任何一项低于阈值，则 Sprint 结论为 `FAIL`
 - 所有项目均达到阈值，才可判定为 `PASS`
 
-## 四、`qa_report.md` 必须包含
+## 四、`harness/artifacts/qa_report.md` 必须包含
 - 最终结论：`PASS` / `FAIL`
 - 各评分项分数
 - 每项评分的证据

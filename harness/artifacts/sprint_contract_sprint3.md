@@ -56,4 +56,4 @@
 - [ ] 固定测试清单通过
 - [ ] 原有核心 API 路径保持兼容
 - [ ] 字段级 wire contract 保持兼容
-- [ ] 已知问题记录在 `artifacts/build_report.md`
+- [ ] 已知问题记录在 `harness/artifacts/build_report.md`

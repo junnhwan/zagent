@@ -54,5 +54,5 @@
 - [ ] Playground 的“范式视角选择 + 步骤列表 + 最终输出”可演示
 - [ ] Workflows 的“范式卡片 -> 演示跳转”可用
 - [ ] 本轮排除项未被误做进来
-- [ ] 已知问题记录在 `artifacts/build_report.md`
+- [ ] 已知问题记录在 `harness/artifacts/build_report.md`
 

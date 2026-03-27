@@ -5,7 +5,7 @@
 - 对应 Sprint：专项修复 - MCP 接入层收口与双传输并挂
 - 最后更新时间：2026-03-27
 
-> 说明：Sprint 4 合同已归档至 `artifacts/sprint_contract_sprint4.md`。
+> 说明：Sprint 4 合同已归档至 `harness/artifacts/sprint_contract_sprint4.md`。
 
 ## 一、Sprint 目标
 - 将当前 MCP 工具接入层收口到可稳定运行、可测试验证、可与简历表述对齐的状态。
@@ -63,4 +63,4 @@
 - [ ] `McpBindingResolverImplTest`、`McpConfigSyncServiceImplTest`、`McpModeAdminServiceImplTest` 通过
 - [ ] `mvn "-DskipTests" compile` 通过
 - [ ] 简历与运行文档口径与真实实现一致
-- [ ] 已知问题记录到 `artifacts/build_report.md`
+- [ ] 已知问题记录到 `harness/artifacts/build_report.md`
