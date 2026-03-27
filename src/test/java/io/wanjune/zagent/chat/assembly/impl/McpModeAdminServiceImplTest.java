@@ -32,9 +32,9 @@ class McpModeAdminServiceImplTest {
 
         McpSyncProperties properties = new McpSyncProperties();
         properties.setManifest(manifest(
+                List.of(model("2005", "1001", "gpt-5.4", "openai")),
                 List.of(),
-                List.of(),
-                List.of(binding("client", "3006", "model", List.of("2002")))
+                List.of(binding("client", "3006", "model", List.of("2005")))
         ));
         McpManifestStateHolder stateHolder = new McpManifestStateHolder(properties, new ObjectMapper());
         stateHolder.initialize();
@@ -48,23 +48,23 @@ class McpModeAdminServiceImplTest {
 
         McpModeStatusVO status = service.getCurrentStatus();
 
-        assertThat(status.getCurrentMode()).isEqualTo("stdio");
-        assertThat(status.getCurrentModelId()).isEqualTo("2002");
-        assertThat(status.getOptions()).hasSize(2);
+        assertThat(status.getCurrentMode()).isEqualTo("bundle");
+        assertThat(status.getCurrentModelId()).isEqualTo("2005");
+        assertThat(status.getOptions()).hasSize(1);
         assertThat(status.getOptions()).extracting(McpModeStatusVO.McpModeOptionVO::getMode)
-                .containsExactly("stdio", "amap");
+                .containsExactly("bundle");
     }
 
     @Test
-    void switchModeRejectsRemovedSseProbeMode() {
+    void switchModeRejectsAnyNonBundleMode() {
         AiClientAssemblyService assemblyService = Mockito.mock(AiClientAssemblyService.class);
         Mockito.when(assemblyService.getMcpRuntimeStates()).thenReturn(Map.of());
 
         McpSyncProperties properties = new McpSyncProperties();
         properties.setManifest(manifest(
+                List.of(model("2005", "1001", "gpt-5.4", "openai")),
                 List.of(),
-                List.of(),
-                List.of(binding("client", "3006", "model", List.of("2002")))
+                List.of(binding("client", "3006", "model", List.of("2005")))
         ));
         McpManifestStateHolder stateHolder = new McpManifestStateHolder(properties, new ObjectMapper());
         stateHolder.initialize();
@@ -76,24 +76,28 @@ class McpModeAdminServiceImplTest {
                 parser
         );
 
-        assertThatThrownBy(() -> service.switchMode("sse_probe"))
+        assertThatThrownBy(() -> service.switchMode("amap"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("sse_probe");
+                .hasMessageContaining("amap");
     }
 
     @Test
-    void getCurrentStatusIncludesActiveMcpTransportAndLastError() {
+    void getCurrentStatusIncludesBothActiveMcpsAndRuntimeState() {
         AiClientAssemblyService assemblyService = Mockito.mock(AiClientAssemblyService.class);
         Mockito.when(assemblyService.getMcpRuntimeStates()).thenReturn(Map.of(
+                "5001", new McpRuntimeState(true, null, Instant.parse("2026-03-21T08:00:00Z")),
                 "5003", new McpRuntimeState(false, "SSE connection refused", Instant.parse("2026-03-21T08:00:00Z"))
         ));
 
         McpSyncProperties properties = new McpSyncProperties();
         properties.setManifest(manifest(
                 List.of(model("2005", "1001", "gpt-5.4", "openai")),
-                List.of(mcp("5003", "amap-sse", "sse", "{\"baseUri\":\"http://127.0.0.1:18081/\",\"sseEndpoint\":\"sse/\"}", 20)),
                 List.of(
-                        binding("model", "2005", "tool_mcp", List.of("5003")),
+                        mcp("5001", "filesystem-docs", "stdio", "{\"filesystem\":{\"command\":\"npx\",\"args\":[\"-y\",\"@modelcontextprotocol/server-filesystem\",\"D:/dev/my_proj/zagent/docs\"],\"env\":{\"MCP_LOG_LEVEL\":\"info\"}}}", 10),
+                        mcp("5003", "amap-sse", "sse", "{\"baseUri\":\"http://127.0.0.1:18081/\",\"sseEndpoint\":\"sse/\"}", 20)
+                ),
+                List.of(
+                        binding("model", "2005", "tool_mcp", List.of("5001", "5003")),
                         binding("client", "3006", "model", List.of("2005"))
                 )
         ));
@@ -109,13 +113,16 @@ class McpModeAdminServiceImplTest {
 
         McpModeStatusVO status = service.getCurrentStatus();
 
-        assertThat(status.getCurrentMode()).isEqualTo("amap");
-        assertThat(status.getActiveMcps()).hasSize(1);
-        assertThat(status.getActiveMcps().get(0).getMcpId()).isEqualTo("5003");
-        assertThat(status.getActiveMcps().get(0).getTransportType()).isEqualTo("sse");
-        assertThat(status.getActiveMcps().get(0).getTransportSummary()).isEqualTo("http://127.0.0.1:18081/sse");
-        assertThat(status.getActiveMcps().get(0).getReady()).isFalse();
-        assertThat(status.getActiveMcps().get(0).getLastError()).isEqualTo("SSE connection refused");
+        assertThat(status.getCurrentMode()).isEqualTo("bundle");
+        assertThat(status.getActiveMcps()).hasSize(2);
+        assertThat(status.getActiveMcps()).extracting("mcpId").containsExactly("5001", "5003");
+        assertThat(status.getActiveMcps().get(0).getTransportType()).isEqualTo("stdio");
+        assertThat(status.getActiveMcps().get(0).getTransportSummary()).contains("npx");
+        assertThat(status.getActiveMcps().get(0).getReady()).isTrue();
+        assertThat(status.getActiveMcps().get(1).getTransportType()).isEqualTo("sse");
+        assertThat(status.getActiveMcps().get(1).getTransportSummary()).isEqualTo("http://127.0.0.1:18081/sse");
+        assertThat(status.getActiveMcps().get(1).getReady()).isFalse();
+        assertThat(status.getActiveMcps().get(1).getLastError()).isEqualTo("SSE connection refused");
     }
 
     private McpSyncManifest manifest(List<McpSyncManifest.ModelConfig> models,

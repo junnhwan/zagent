@@ -30,9 +30,9 @@ class McpBindingResolverImplTest {
                 ));
         Mockito.when(aiClientConfigMapper.selectBySourceAndTargetType(Constants.TYPE_MODEL, "2005", Constants.TYPE_TOOL_MCP))
                 .thenReturn(List.of(
+                        config(Constants.TYPE_MODEL, "2005", Constants.TYPE_TOOL_MCP, "5001"),
                         config(Constants.TYPE_MODEL, "2005", Constants.TYPE_TOOL_MCP, "5003"),
-                        config(Constants.TYPE_MODEL, "2005", Constants.TYPE_TOOL_MCP, "5004"),
-                        config(Constants.TYPE_MODEL, "2005", Constants.TYPE_TOOL_MCP, "5003")
+                        config(Constants.TYPE_MODEL, "2005", Constants.TYPE_TOOL_MCP, "5001")
                 ));
 
         AiClientBindingResolution resolution = resolver.resolve("3006");
@@ -41,7 +41,7 @@ class McpBindingResolverImplTest {
         assertThat(resolution.modelId()).isEqualTo("2005");
         assertThat(resolution.promptIds()).containsExactly("6001");
         assertThat(resolution.advisorIds()).containsExactly("7001");
-        assertThat(resolution.mcpIds()).containsExactly("5003", "5004");
+        assertThat(resolution.mcpIds()).containsExactly("5001", "5003");
     }
 
     @Test

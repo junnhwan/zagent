@@ -1,5 +1,21 @@
 # Contract Review（Evaluator）
 
+## 结论（最新：MCP 接入层收口合同审查）
+- 复审轮次：第 1 次
+- 结论：**已批准（可开工）**
+- 审查时间：2026-03-27
+- 对应合同：`artifacts/sprint_contract.md`（专项修复 - MCP 接入层收口与双传输并挂）
+
+## 审查要点与证据（MCP 专项修复）
+- 目标闭合：合同已明确“同一 client 同时挂 `filesystem(stdio)` 与 `amap(sse)`”，没有再保留模糊的“模式切换”范围。
+- 风险闭合：合同已把 `5004 git-repo` 的退役清理写入 Included Scope 和验证计划，避免只改 manifest 不改数据库残留。
+- 口径闭合：合同已把“简历描述与代码实现一致”纳入验收项，能直接约束 `docs/简历项目表述与面试介绍.md` 与 `docs/sql/README.md` 的修正。
+- 验证闭合：已列出定向测试集与编译验证命令，具备可执行性与可验收性。
+
+---
+
+# Contract Review（Evaluator）
+
 ## 结论（最新：Sprint 4 合同审查）
 - 复审轮次：第 2 次
 - 结论：**已批准（可开工）**

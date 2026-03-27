@@ -1,10 +1,10 @@
 package io.wanjune.zagent.mcp;
 
-import io.wanjune.zagent.model.dto.McpSyncManifest;
+import io.wanjune.zagent.chat.assembly.AiClientAssemblyService;
 import io.wanjune.zagent.model.dto.McpRuntimeState;
+import io.wanjune.zagent.model.dto.McpSyncManifest;
 import io.wanjune.zagent.model.vo.McpModeStatusVO;
 import io.wanjune.zagent.model.vo.McpRuntimeStatusVO;
-import io.wanjune.zagent.chat.assembly.AiClientAssemblyService;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
@@ -16,12 +16,18 @@ import java.util.Objects;
 @Service
 public class McpModeAdminServiceImpl implements McpModeAdminService {
 
+    private static final String BUNDLE_MODE = "bundle";
+    private static final String BUNDLE_MODEL_ID = "2005";
     private static final List<String> MANAGED_CLIENT_IDS = List.of("3006", "3008");
     private static final Map<String, ModeDefinition> MODE_DEFINITIONS = new LinkedHashMap<>();
 
     static {
-        MODE_DEFINITIONS.put("stdio", new ModeDefinition("stdio", "STDIO Filesystem", "2002", "本地 filesystem MCP，适合读取 docs 目录文件"));
-        MODE_DEFINITIONS.put("amap", new ModeDefinition("amap", "高德天气/POI", "2005", "高德 SSE MCP，支持天气和 POI 搜索"));
+        MODE_DEFINITIONS.put(BUNDLE_MODE, new ModeDefinition(
+                BUNDLE_MODE,
+                "Filesystem + Amap",
+                BUNDLE_MODEL_ID,
+                "同一 client 同时挂载 stdio filesystem 与 sse amap"
+        ));
     }
 
     private final McpManifestStateHolder manifestStateHolder;
@@ -112,7 +118,6 @@ public class McpModeAdminServiceImpl implements McpModeAdminService {
                 .toList();
 
         Map<String, McpRuntimeState> runtimeStates = aiClientAssemblyService.getMcpRuntimeStates();
-
         List<McpSyncManifest.McpToolConfig> mcpConfigs = manifest.getMcps() == null ? List.of() : manifest.getMcps();
 
         return mcpConfigs.stream()

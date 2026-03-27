@@ -83,3 +83,18 @@
   - `python` 单测：`tools.test_amap_sse_mcp`、`tools.test_mcp_transport_compat` 通过。
   - `mvn "-DskipTests" compile` 通过。
   - `Set-Location frontend; npm run build` 通过。
+
+## 九、补充变更：MCP 接入层收口为双工具 bundle
+- 已将 MCP 默认运行形态收口为单一 `bundle`：同一 client 同时挂载 `filesystem-docs(stdio)` 与 `amap-sse(sse)`。
+- 已从 `src/main/resources/application.yml` 的 manifest 中删除 `2002`、`2006` 与 `5004 git-repo`，当前只保留 `2005 -> [5001, 5003]`。
+- `McpModeAdminServiceImpl` 已从 `stdio/amap` 双模式语义收口为单一 `bundle` 语义；接口仍保留兼容形状，但不再承担真实模式切换职责。
+- `McpConfigSyncServiceImpl` 已补充 retired MCP 清理：会删除不在当前 manifest 内的 `model -> tool_mcp` 绑定残留，并清理无引用的过期 MCP 工具记录。
+- `docs/简历项目表述与面试介绍.md` 已更新为更准确口径：数据库承载运行时关系与查询，manifest 负责同步默认 MCP 配置。
+- `docs/sql/README.md` 已同步为当前运行口径：只保留 `filesystem + amap` 双工具并挂，不再引导使用 `git-repo` 或历史模式切换。
+- 本轮补充验证：
+  - `mvn "-Dtest=McpBindingResolverImplTest,McpConfigSyncServiceImplTest,McpModeAdminServiceImplTest" test` 通过。
+  - `mvn "-Dtest=AiClientAssemblyServiceImplTest,ReActExecuteStrategyTest,FlowExecuteStrategyTest" test` 通过。
+  - `mvn "-DskipTests" compile` 通过。
+- 本轮已知限制：
+  - 当前保留了 `/admin/mcp-config/current`、`/admin/mcp-config/switch` 的接口外形，但其产品语义已收口为单一 `bundle`，后续如无兼容压力可进一步删除切换接口。
+  - 工作区中仍存在历史生成的 `tools/__pycache__/*.pyc` 未跟踪文件，本轮未处理。

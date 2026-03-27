@@ -42,3 +42,24 @@
 ## 六、下一轮建议
 - 若继续演进，可单独开下一阶段做完整 trace/tool-call/RAG 命中链路观测。
 - 若准备投递简历，下一步建议整理项目截图、录一段短演示视频，并补充中英文项目描述。
+
+## 七、补充验收：MCP 接入层收口与简历口径对齐
+- 结论：`PASS`
+- 评估时间：2026-03-27
+
+### 评分补充
+- 产品深度（Product Depth）：4/5
+  - 证据：本轮把 MCP 从“模式切换 + 多余工具残留”收口为“默认双工具并挂”，直接提升了系统的可解释性与可运行性。
+- 功能完成度（Functionality）：5/5
+  - 证据：`McpBindingResolverImplTest`、`McpConfigSyncServiceImplTest`、`McpModeAdminServiceImplTest`、`AiClientAssemblyServiceImplTest`、`ReActExecuteStrategyTest`、`FlowExecuteStrategyTest` 全部通过。
+  - 证据：`mvn "-DskipTests" compile` 通过。
+- 视觉与体验质量（Visual Design / UX Quality）：3/5
+  - 证据：本轮未做 UI 重构，但已通过配置与运行文档收口，避免管理页和运行口径继续误导。
+- 代码质量（Code Quality）：4/5
+  - 证据：实现聚焦在 manifest、同步清理、状态语义与测试补齐，没有引入新的配置中心或额外抽象。
+
+### 本轮验收证据
+- 同一 MCP model 已同时绑定 `5001 filesystem-docs` 与 `5003 amap-sse`。
+- `McpModeAdminServiceImpl` 当前状态语义已收口为单一 `bundle`。
+- `git-repo` 已从当前 manifest 中移除，且同步层具备退役 MCP 工具清理能力。
+- 简历文档与 SQL 运行文档已修正为“数据库关系 + manifest 默认同步”的准确口径。

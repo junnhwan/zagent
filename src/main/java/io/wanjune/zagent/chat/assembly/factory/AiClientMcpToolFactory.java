@@ -116,11 +116,10 @@ public class AiClientMcpToolFactory {
         String baseUri = McpTransportConfigParserImpl.normalizeSseBaseUri(config.baseUri());
         String sseEndpoint = McpTransportConfigParserImpl.normalizeSseEndpoint(config.sseEndpoint());
         log.info("Initializing SSE MCP transport, baseUri: {}, sseEndpoint: {}", baseUri, sseEndpoint);
-        McpSyncClient client = McpClient.sync(new HttpClientSseClientTransport(
-                        java.net.http.HttpClient.newBuilder(),
-                        baseUri,
-                        sseEndpoint,
-                        objectMapper))
+        McpSyncClient client = McpClient.sync(
+                        HttpClientSseClientTransport.builder(baseUri)
+                                .sseEndpoint(sseEndpoint)
+                                .build())
                 .requestTimeout(timeout).build();
         client.initialize();
         return client;

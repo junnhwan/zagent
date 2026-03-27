@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -31,6 +32,11 @@ public class McpConfigSyncServiceImpl implements McpConfigSyncService {
             "transport_config = VALUES(transport_config), request_timeout = VALUES(request_timeout), status = VALUES(status)";
 
     private static final String DELETE_BINDINGS_SQL = "DELETE FROM ai_client_config WHERE source_type = ? AND source_id = ? AND target_type = ?";
+    private static final String DELETE_EXACT_BINDING_SQL = "DELETE FROM ai_client_config WHERE source_type = ? AND source_id = ? AND target_type = ? AND target_id = ?";
+    private static final String DELETE_MCP_SQL = "DELETE FROM ai_client_tool_mcp WHERE mcp_id = ?";
+    private static final String SELECT_MODEL_TOOL_BINDINGS_SQL = "SELECT source_id, target_id FROM ai_client_config WHERE source_type = 'model' AND target_type = 'tool_mcp'";
+    private static final String SELECT_ALL_MCP_IDS_SQL = "SELECT mcp_id FROM ai_client_tool_mcp";
+    private static final String COUNT_MCP_BINDING_REFERENCES_SQL = "SELECT COUNT(1) FROM ai_client_config WHERE target_type = ? AND target_id = ?";
 
     private static final String INSERT_BINDING_SQL = "INSERT INTO ai_client_config " +
             "(source_type, source_id, target_type, target_id, ext_param, status) VALUES (?, ?, ?, ?, ?, ?)";
@@ -75,6 +81,7 @@ public class McpConfigSyncServiceImpl implements McpConfigSyncService {
         syncModels(manifest.getModels());
         syncMcps(manifest.getMcps());
         syncBindings(manifest.getBindings());
+        cleanupRetiredMcps(manifest);
         log.info("MCP config sync finished: models={}, mcps={}, bindings={}",
                 safeList(manifest.getModels()).size(),
                 safeList(manifest.getMcps()).size(),
@@ -154,6 +161,35 @@ public class McpConfigSyncServiceImpl implements McpConfigSyncService {
         }
     }
 
+    private void cleanupRetiredMcps(McpSyncManifest manifest) {
+        List<String> currentMcpIds = safeList(manifest.getMcps()).stream()
+                .map(McpSyncManifest.McpToolConfig::getMcpId)
+                .filter(StringUtils::isNotBlank)
+                .distinct()
+                .toList();
+
+        List<Map<String, Object>> modelToolBindings = jdbcTemplate.queryForList(SELECT_MODEL_TOOL_BINDINGS_SQL);
+        for (Map<String, Object> row : modelToolBindings) {
+            String sourceId = asString(row.get("source_id"));
+            String targetId = asString(row.get("target_id"));
+            if (StringUtils.isBlank(sourceId) || StringUtils.isBlank(targetId) || currentMcpIds.contains(targetId)) {
+                continue;
+            }
+            jdbcTemplate.update(DELETE_EXACT_BINDING_SQL, "model", sourceId, "tool_mcp", targetId);
+        }
+
+        List<String> allMcpIds = jdbcTemplate.queryForList(SELECT_ALL_MCP_IDS_SQL, String.class);
+        for (String mcpId : safeList(allMcpIds)) {
+            if (StringUtils.isBlank(mcpId) || currentMcpIds.contains(mcpId)) {
+                continue;
+            }
+            Integer referenceCount = jdbcTemplate.queryForObject(COUNT_MCP_BINDING_REFERENCES_SQL, Integer.class, "tool_mcp", mcpId);
+            if (referenceCount == null || referenceCount == 0) {
+                jdbcTemplate.update(DELETE_MCP_SQL, mcpId);
+            }
+        }
+    }
+
     private void validateManifest(McpSyncManifest manifest) {
         if (manifest == null) {
             throw new IllegalArgumentException("MCP sync config is empty");
@@ -201,6 +237,10 @@ public class McpConfigSyncServiceImpl implements McpConfigSyncService {
             }
         }
         return new ArrayList<>(values);
+    }
+
+    private String asString(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private <T> List<T> safeList(List<T> values) {
