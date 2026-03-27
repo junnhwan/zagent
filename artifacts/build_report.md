@@ -69,6 +69,7 @@
 ## 八、补充变更：MCP SSE 兼容修复与前端状态纠偏
 - 已新增 `tools/mcp_transport_compat.py`，统一承接 Python SSE MCP 服务的兼容层与日志降噪逻辑。
 - `tools/amap_sse_mcp.py` 与 `tools/git_repo_mcp.py` 已接入同一套兼容中间件：
+- 已修复 `python tools/amap_sse_mcp.py` / `python tools/git_repo_mcp.py` 直接启动时的导入兼容问题，支持脚本模式与模块模式两种运行方式。
   - 缺失 `Content-Type` 时自动补为 `application/json`，并降为 debug 级别日志。
   - 对 `/messages/` 的空 POST 请求返回 `202 Accepted`，避免 FastMCP 因空 JSON 直接报 `EOF` / `400`。
   - 对 uvicorn 的 `Unsupported upgrade request` / `No supported WebSocket library detected` 噪音告警加过滤，控制台更干净。

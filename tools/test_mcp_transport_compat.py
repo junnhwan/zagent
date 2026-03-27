@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import pathlib
+import subprocess
+import sys
 import unittest
 
 from tools.mcp_transport_compat import McpSseCompatibilityMiddleware, UvicornUpgradeNoiseFilter
@@ -116,6 +119,28 @@ class McpSseCompatibilityMiddlewareTest(unittest.TestCase):
             exc_info=None,
         )
         self.assertTrue(noise_filter.filter(normal_record))
+
+
+    def test_direct_script_execution_path_can_import_compat_module_for_amap(self) -> None:
+        repo_root = pathlib.Path(__file__).resolve().parents[1]
+        script_path = repo_root / 'tools' / 'amap_sse_mcp.py'
+        command = (
+            "import os, runpy, sys; "
+            "cwd=os.getcwd(); "
+            "tools_dir=os.path.join(cwd, 'tools'); "
+            "sys.path=[tools_dir] + [p for p in sys.path if p not in ('', cwd, tools_dir)]; "
+            f"runpy.run_path(r'{script_path}', run_name='zagent_test_import')"
+        )
+
+        completed = subprocess.run(
+            [sys.executable, '-c', command],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
 if __name__ == "__main__":

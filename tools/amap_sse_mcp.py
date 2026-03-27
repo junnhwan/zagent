@@ -9,7 +9,10 @@ from urllib.request import urlopen
 
 from mcp.server.fastmcp import FastMCP
 
-from tools.mcp_transport_compat import McpSseCompatibilityMiddleware, install_uvicorn_upgrade_noise_filter
+try:
+    from tools.mcp_transport_compat import McpSseCompatibilityMiddleware, install_uvicorn_upgrade_noise_filter
+except ModuleNotFoundError:
+    from mcp_transport_compat import McpSseCompatibilityMiddleware, install_uvicorn_upgrade_noise_filter
 
 
 AMAP_WEB_API_KEY = os.getenv("AMAP_WEB_API_KEY", "")
