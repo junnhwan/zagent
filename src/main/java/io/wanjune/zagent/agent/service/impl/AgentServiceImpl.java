@@ -52,14 +52,24 @@ public class AgentServiceImpl implements AgentService {
 
     @Override
     public AgentResultVO run(AgentRunRequest request) {
+        long startAt = System.currentTimeMillis();
         AiAgent agent = loadAgent(request.getAgentId());
         IExecuteStrategy.ExecuteContext context = buildContext(agent, request);
         IExecuteStrategy strategy = resolveStrategy(agent.getStrategy());
         List<AiAgentFlowConfig> flowConfigs = aiAgentFlowConfigMapper.selectByAgentId(agent.getAgentId());
 
         try {
+            log.info("Agent同步执行开始: agentId={}, strategy={}, maxStep={}",
+                    agent.getAgentId(), agent.getStrategy(), request.getMaxStep());
             String finalOutput = strategy.execute(context, null);
             List<AgentResultVO.StepResult> steps = buildStepResults(flowConfigs, request.getInput(), finalOutput);
+            long costMs = System.currentTimeMillis() - startAt;
+            log.info("Agent同步执行完成: agentId={}, strategy={}, costMs={}, stepCount={}, outputLength={}",
+                    agent.getAgentId(),
+                    agent.getStrategy(),
+                    costMs,
+                    steps.size(),
+                    finalOutput == null ? 0 : finalOutput.length());
             return AgentResultVO.builder()
                     .agentId(agent.getAgentId())
                     .agentName(agent.getAgentName())
@@ -67,7 +77,9 @@ public class AgentServiceImpl implements AgentService {
                     .steps(steps)
                     .build();
         } catch (Exception e) {
-            log.error("Agent执行失败: agentId={}", request.getAgentId(), e);
+            long costMs = System.currentTimeMillis() - startAt;
+            log.error("Agent同步执行失败: agentId={}, strategy={}, costMs={}",
+                    request.getAgentId(), agent.getStrategy(), costMs, e);
             throw new RuntimeException("Agent执行失败: " + e.getMessage(), e);
         }
     }

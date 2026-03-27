@@ -116,7 +116,7 @@ export const chatApi = {
 
 // ─── Agent Run ────────────────────────────────────────
 export const agentRunApi = {
-  run: (data) => http.post('/agent/run', data, { timeout: 120000 })
+  run: (data) => http.post('/agent/run', data, { timeout: 0 })
   // SSE stream uses native EventSource — see AgentTest.vue
 }
 

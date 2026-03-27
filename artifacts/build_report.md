@@ -63,3 +63,5 @@
 - 本轮补充验证：
   - `Set-Location frontend; npm run build` 通过。
   - `mvn "-DskipTests" compile` 通过。
+- 已补充同步运行超时修复：前端 `agentRunApi.run` 不再设置固定 120 秒超时，避免“后端仍在执行、前端先判失败”。
+- 已补充后端同步运行耗时日志：`Agent同步执行开始/完成/失败`，便于定位响应何时真正返回。
