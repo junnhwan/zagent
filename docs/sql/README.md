@@ -1,4 +1,4 @@
-﻿# SQL 使用说明
+# SQL 使用说明
 
 本目录只保留两个日常主入口脚本：
 
@@ -35,7 +35,7 @@
 推荐方式：
 
 1. 修改 `src/main/resources/application.yml` 中的 `zagent.mcp.sync.manifest`
-2. 如有需要，同时调整 `zagent.mcp.filesystem.*`、`zagent.mcp.sse-probe.*`、`zagent.mcp.amap.*`、`zagent.mcp.git-repo.*`
+2. 如有需要，同时调整 `zagent.mcp.filesystem.*`、`zagent.mcp.amap.*`、`zagent.mcp.git-repo.*`
 3. 重启后端
 4. 应用启动时自动把 MCP 的 model / tool / binding 同步到 MySQL
 
@@ -50,8 +50,8 @@
 `src/main/resources/application.yml` 的 `zagent.mcp.sync.manifest` 当前已经包含以下场景：
 
 - `2002` -> `5001`：`stdio filesystem`
-- `2003` -> `5002`：`sse probe`
 - `2005` -> `5003`：高德 SSE（天气 + POI）
+- `2006` -> `5004`：`git-repo`
 
 当前默认绑定：
 
@@ -101,8 +101,8 @@
 按需要启动对应外部 MCP：
 
 - `stdio filesystem`：依赖本机 `npx`
-- `sse probe`：运行 `python tools/mcp_sse_probe.py`
 - `amap sse`：运行 `python tools/amap_sse_mcp.py`
+- `git-repo`：运行 `python tools/git_repo_mcp.py`
 
 如果要长期生效，请修改 `application.yml` 中的 MCP 绑定并重启后端。
 
@@ -115,4 +115,3 @@
 - 项目演进过程中的旧配置方式
 
 现在一般不需要再执行这些脚本，除非你要复盘历史配置。
-

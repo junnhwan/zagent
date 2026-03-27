@@ -21,7 +21,6 @@ public class McpModeAdminServiceImpl implements McpModeAdminService {
 
     static {
         MODE_DEFINITIONS.put("stdio", new ModeDefinition("stdio", "STDIO Filesystem", "2002", "本地 filesystem MCP，适合读取 docs 目录文件"));
-        MODE_DEFINITIONS.put("sse_probe", new ModeDefinition("sse_probe", "SSE Probe", "2003", "本地 SSE probe MCP，适合验证 SSE 接入"));
         MODE_DEFINITIONS.put("amap", new ModeDefinition("amap", "高德天气/POI", "2005", "高德 SSE MCP，支持天气和 POI 搜索"));
     }
 

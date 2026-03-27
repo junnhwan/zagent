@@ -45,3 +45,12 @@
 - 本轮补充验证：
   - `mvn "-DskipTests" compile` 通过。
   - `mvn "-Dtest=McpConfigSyncServiceImplTest,McpModeAdminServiceImplTest" test` 通过。
+
+## 六、补充变更：移除 sse_probe MCP
+- 已从 `application.yml` 的 MCP manifest 中删除 `2003 -> 5002 -> sse-probe` 配置。
+- 已从 `McpModeAdminServiceImpl` 的运行时模式列表中删除 `sse_probe`，当前仅保留 `stdio` 与 `amap` 两种可切换模式。
+- 已删除 `tools/mcp_sse_probe.py`、对应 `__pycache__` 文件，以及 `docs/sql/legacy/` 下所有仅服务于 sse_probe 的历史脚本。
+- MCP 文档与测试提示词已同步更新，不再引导使用已删除的 sse_probe。
+- 本轮补充验证：
+  - `mvn "-Dtest=McpModeAdminServiceImplTest,McpBindingResolverImplTest" test` 通过。
+  - `mvn "-DskipTests" compile` 通过。

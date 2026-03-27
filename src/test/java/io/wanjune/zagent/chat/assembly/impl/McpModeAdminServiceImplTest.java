@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class McpModeAdminServiceImplTest {
 
@@ -49,7 +50,35 @@ class McpModeAdminServiceImplTest {
 
         assertThat(status.getCurrentMode()).isEqualTo("stdio");
         assertThat(status.getCurrentModelId()).isEqualTo("2002");
-        assertThat(status.getOptions()).hasSize(3);
+        assertThat(status.getOptions()).hasSize(2);
+        assertThat(status.getOptions()).extracting(McpModeStatusVO.McpModeOptionVO::getMode)
+                .containsExactly("stdio", "amap");
+    }
+
+    @Test
+    void switchModeRejectsRemovedSseProbeMode() {
+        AiClientAssemblyService assemblyService = Mockito.mock(AiClientAssemblyService.class);
+        Mockito.when(assemblyService.getMcpRuntimeStates()).thenReturn(Map.of());
+
+        McpSyncProperties properties = new McpSyncProperties();
+        properties.setManifest(manifest(
+                List.of(),
+                List.of(),
+                List.of(binding("client", "3006", "model", List.of("2002")))
+        ));
+        McpManifestStateHolder stateHolder = new McpManifestStateHolder(properties, new ObjectMapper());
+        stateHolder.initialize();
+
+        McpModeAdminServiceImpl service = new McpModeAdminServiceImpl(
+                stateHolder,
+                Mockito.mock(McpConfigSyncService.class),
+                assemblyService,
+                parser
+        );
+
+        assertThatThrownBy(() -> service.switchMode("sse_probe"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("sse_probe");
     }
 
     @Test
