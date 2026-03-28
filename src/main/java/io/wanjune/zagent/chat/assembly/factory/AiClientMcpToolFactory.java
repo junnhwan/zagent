@@ -10,7 +10,7 @@ import io.wanjune.zagent.model.dto.McpRuntimeState;
 import io.wanjune.zagent.model.entity.AiClientToolMcp;
 import io.wanjune.zagent.model.enums.TransportTypeEnum;
 import io.wanjune.zagent.mcp.McpTransportConfigParser;
-import io.wanjune.zagent.mcp.McpTransportConfigParserImpl;
+import io.wanjune.zagent.mcp.impl.McpTransportConfigParserImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ToolContext;

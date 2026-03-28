@@ -5,7 +5,7 @@ import io.wanjune.zagent.mapper.AiClientConfigMapper;
 import io.wanjune.zagent.model.dto.AiClientBindingResolution;
 import io.wanjune.zagent.model.entity.AiClientConfig;
 import io.wanjune.zagent.mcp.McpBindingResolver;
-import io.wanjune.zagent.mcp.McpBindingResolverImpl;
+import io.wanjune.zagent.mcp.impl.McpBindingResolverImpl;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 

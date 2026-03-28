@@ -1,7 +1,7 @@
 package io.wanjune.zagent.chat.assembly.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.wanjune.zagent.mcp.McpConfigSyncServiceImpl;
+import io.wanjune.zagent.mcp.impl.McpConfigSyncServiceImpl;
 import io.wanjune.zagent.mcp.McpManifestStateHolder;
 import io.wanjune.zagent.mcp.McpSyncProperties;
 import io.wanjune.zagent.model.dto.McpSyncManifest;

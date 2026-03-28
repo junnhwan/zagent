@@ -1,6 +1,10 @@
-package io.wanjune.zagent.mcp;
+package io.wanjune.zagent.mcp.impl;
 
 import io.wanjune.zagent.chat.assembly.AiClientAssemblyService;
+import io.wanjune.zagent.mcp.McpConfigSyncService;
+import io.wanjune.zagent.mcp.McpManifestStateHolder;
+import io.wanjune.zagent.mcp.McpModeAdminService;
+import io.wanjune.zagent.mcp.McpTransportConfigParser;
 import io.wanjune.zagent.model.dto.McpRuntimeState;
 import io.wanjune.zagent.model.dto.McpSyncManifest;
 import io.wanjune.zagent.model.vo.McpModeStatusVO;

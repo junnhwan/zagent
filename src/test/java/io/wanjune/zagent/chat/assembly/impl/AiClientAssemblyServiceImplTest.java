@@ -1,7 +1,7 @@
 package io.wanjune.zagent.chat.assembly.impl;
 
 import io.wanjune.zagent.chat.assembly.factory.AiClientMcpToolFactory;
-import io.wanjune.zagent.mcp.McpTransportConfigParserImpl;
+import io.wanjune.zagent.mcp.impl.McpTransportConfigParserImpl;
 import io.wanjune.zagent.model.dto.StdioTransportConfig;
 import io.wanjune.zagent.model.entity.AiClientToolMcp;
 import org.junit.jupiter.api.Test;
